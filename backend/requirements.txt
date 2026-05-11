@@ -1,0 +1,16 @@
+fastapi
+uvicorn[standard]
+polars
+fastexcel
+openpyxl
+sqlalchemy
+psycopg2-binary
+python-dotenv
+pydantic
+pydantic-settings
+google-genai
+httpx
+python-multipart
+python-jose[cryptography]
+passlib[bcrypt]
+bcrypt

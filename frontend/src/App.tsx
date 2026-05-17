@@ -1905,7 +1905,9 @@ export default function App() {
   const [searchTerm, setSearchTerm]   = useState('')
   const [splashVisible, setSplashVisible] = useState(true)
   const comparativoRef   = useRef<HTMLDivElement>(null)
-  const [exportingComp, setExportingComp] = useState(false)
+  const sistemaRef       = useRef<HTMLDivElement>(null)
+  const [exportingComp, setExportingComp]   = useState(false)
+  const [exportingVista, setExportingVista] = useState(false)
 
   // ── Períodos v2 ────────────────────────────────────────────────────────────
   const [periodos, setPeriodos]           = useState<any[]>([])
@@ -2043,15 +2045,21 @@ export default function App() {
     return c ? c.promedio : 0
   })
 
-  const exportComparativoPDF = async () => {
-    if (!comparativoRef.current) return
-    setExportingComp(true)
+  // (exportComparativoPDF is now exportComparativoPDF2, defined after exportPanelToPDF)
+
+  // ── Generic panel → PDF capture ─────────────────────────────────────────
+  const exportPanelToPDF = async (
+    el: HTMLElement,
+    titulo: string,
+    setExporting: (v: boolean) => void,
+    filename: string,
+  ) => {
+    setExporting(true)
     try {
       const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
         import('jspdf'),
         import('html2canvas'),
       ])
-      const el = comparativoRef.current
       const canvas = await html2canvas(el, {
         scale: 2,
         useCORS: true,
@@ -2061,65 +2069,65 @@ export default function App() {
         height: el.scrollHeight,
         windowWidth: el.scrollWidth,
       })
-      const pageW = 210
-      const pageH = 297
-      const margin = 10
+      const pageW = 210; const pageH = 297; const margin = 10
       const contentW = pageW - margin * 2
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
 
-      // Header bar
-      pdf.setFillColor(0, 86, 179)
-      pdf.rect(0, 0, pageW, 13, 'F')
-      pdf.setTextColor(255, 255, 255)
-      pdf.setFont('helvetica', 'bold'); pdf.setFontSize(9.5)
-      pdf.text('PUCESE — Vista Comparativa MEIPA vs 360', margin, 9)
-      pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7)
-      pdf.text(new Date().toLocaleDateString('es-EC', { year:'numeric', month:'long', day:'numeric' }), pageW - margin, 9, { align:'right' })
+      // Header
+      pdf.setFillColor(0, 86, 179); pdf.rect(0, 0, pageW, 13, 'F')
+      pdf.setTextColor(255,255,255); pdf.setFont('helvetica','bold'); pdf.setFontSize(9.5)
+      pdf.text(`PUCESE — ${titulo}`, margin, 9)
+      pdf.setFont('helvetica','normal'); pdf.setFontSize(7)
+      pdf.text(new Date().toLocaleDateString('es-EC',{year:'numeric',month:'long',day:'numeric'}), pageW-margin, 9, {align:'right'})
 
-      // Slice canvas across A4 pages
-      const imgW = canvas.width
-      const imgH = canvas.height
-      const ratio = contentW / (imgW / 2)          // canvas scale:2 → divide by 2
-      const totalImgMm = (imgH / 2) * ratio        // total height in mm
+      // Slice across pages
+      const imgW = canvas.width; const imgH = canvas.height
+      const ratio = contentW / (imgW / 2)
+      const totalMm = (imgH / 2) * ratio
+      const firstH = pageH - 13 - margin - 8
+      const otherH = pageH - margin * 2 - 6
+      let yDone = 0; let pg = 0
 
-      const firstSliceH = pageH - 13 - margin - 8  // below header, above footer
-      const otherSliceH = pageH - margin * 2 - 6
-
-      let yRendered = 0
-      let pageIdx   = 0
-
-      while (yRendered < totalImgMm) {
-        const sliceH    = pageIdx === 0 ? firstSliceH : otherSliceH
-        const yStart    = pageIdx === 0 ? 13 + margin : margin
-
-        const srcYpx    = Math.round((yRendered / totalImgMm) * imgH)
-        const srcHpx    = Math.min(Math.round((sliceH / totalImgMm) * imgH), imgH - srcYpx)
-        if (srcHpx <= 0) break
-
-        const slice     = document.createElement('canvas')
-        slice.width     = imgW
-        slice.height    = srcHpx
-        slice.getContext('2d')!.drawImage(canvas, 0, srcYpx, imgW, srcHpx, 0, 0, imgW, srcHpx)
-
-        const sliceHmm  = (srcHpx / 2) * ratio
-        pdf.addImage(slice.toDataURL('image/jpeg', 0.92), 'JPEG', margin, yStart, contentW, sliceHmm)
-
-        // Footer
-        pdf.setFont('helvetica', 'normal'); pdf.setFontSize(6); pdf.setTextColor(180, 180, 180)
-        pdf.text('PUCESE · Dirección de Calidad y Acreditación · Documento Confidencial', margin, pageH - 5)
-        pdf.text(`Pág. ${pageIdx + 1}`, pageW - margin, pageH - 5, { align:'right' })
-
-        yRendered += sliceH
-        if (yRendered < totalImgMm) { pdf.addPage(); pageIdx++ }
+      while (yDone < totalMm) {
+        const sliceH = pg === 0 ? firstH : otherH
+        const yTop   = pg === 0 ? 13 + margin : margin
+        const srcY   = Math.round((yDone / totalMm) * imgH)
+        const srcH   = Math.min(Math.round((sliceH / totalMm) * imgH), imgH - srcY)
+        if (srcH <= 0) break
+        const sl = document.createElement('canvas')
+        sl.width = imgW; sl.height = srcH
+        sl.getContext('2d')!.drawImage(canvas, 0, srcY, imgW, srcH, 0, 0, imgW, srcH)
+        const slHmm = (srcH / 2) * ratio
+        pdf.addImage(sl.toDataURL('image/jpeg', 0.92), 'JPEG', margin, yTop, contentW, slHmm)
+        pdf.setFont('helvetica','normal'); pdf.setFontSize(6); pdf.setTextColor(180,180,180)
+        pdf.text('PUCESE · Dirección de Calidad y Acreditación · Documento Confidencial', margin, pageH-5)
+        pdf.text(`Pág. ${pg+1}`, pageW-margin, pageH-5, {align:'right'})
+        yDone += sliceH
+        if (yDone < totalMm) { pdf.addPage(); pg++ }
       }
-
-      pdf.save(`Vista_Comparativa_PUCESE_${new Date().toISOString().slice(0,10)}.pdf`)
+      pdf.save(filename)
     } catch(err) {
       console.error('Error exportando PDF:', err)
       alert('Error al generar el PDF. Intente de nuevo.')
     }
-    setExportingComp(false)
+    setExporting(false)
   }
+
+  const exportComparativoPDF2 = () =>
+    comparativoRef.current && exportPanelToPDF(
+      comparativoRef.current,
+      'Vista Comparativa MEIPA vs 360',
+      setExportingComp,
+      `Vista_Comparativa_PUCESE_${new Date().toISOString().slice(0,10)}.pdf`,
+    )
+
+  const exportVistaPDF = () =>
+    sistemaRef.current && exportPanelToPDF(
+      sistemaRef.current,
+      currentTabCfg?.label ? `${currentTabCfg.label} — Sistema de Evaluación Docente` : 'Vista de Evaluación',
+      setExportingVista,
+      `Vista_${(currentTabCfg?.label||'evaluacion').replace(/\s+/g,'_')}_${new Date().toISOString().slice(0,10)}.pdf`,
+    )
 
   const [sidebarOpen, setSidebarOpen]     = useState(true)
   const [expandedMEIPA, setExpandedMEIPA] = useState(true)
@@ -2565,14 +2573,14 @@ export default function App() {
                 </div>
                 {loading && <div className="w-4 h-4 rounded-full border-2 border-slate-200 border-t-[#1e40af] animate-spin" />}
                 <button
-                  onClick={exportComparativoPDF}
+                  onClick={exportComparativoPDF2}
                   disabled={exportingComp || loading}
-                  title="Exportar vista comparativa completa como PDF"
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all"
-                  style={{ background:'#eff6ff', color:'#0056b3', borderColor:'#bfdbfe', opacity: exportingComp ? 0.7 : 1 }}
+                  title="Exportar esta vista completa como PDF"
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-[11px] font-bold transition-all shadow-sm"
+                  style={{ background: exportingComp ? '#94a3b8' : '#0056b3', color:'#fff', border:'none', cursor: exportingComp ? 'wait' : 'pointer' }}
                 >
-                  {exportingComp ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
-                  {exportingComp ? 'Exportando…' : 'PDF'}
+                  {exportingComp ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+                  {exportingComp ? 'Exportando…' : 'Exportar PDF'}
                 </button>
               </div>
               <div ref={comparativoRef}>
@@ -2632,11 +2640,11 @@ export default function App() {
               )}
 
               {kpis && (
-                <>
+                <div ref={sistemaRef}>
                   {/* Section header */}
                   <div className="flex items-center gap-3 mb-6">
                     <div className="w-1 self-stretch rounded-full" style={{ background:currentTabCfg.color }} />
-                    <div>
+                    <div className="flex-1">
                       <h2 className="text-base font-bold text-slate-800">{currentTabCfg.label}</h2>
                       <p className="text-[11px] text-slate-400">{currentTabCfg.desc}
                         {activeAnio && (
@@ -2647,7 +2655,17 @@ export default function App() {
                         )}
                       </p>
                     </div>
-                    {loading && <div className="ml-auto w-4 h-4 rounded-full border-2 border-slate-200 border-t-[#1e40af] animate-spin" />}
+                    {loading && <div className="w-4 h-4 rounded-full border-2 border-slate-200 border-t-[#1e40af] animate-spin" />}
+                    <button
+                      onClick={exportVistaPDF}
+                      disabled={exportingVista || loading}
+                      title="Exportar esta vista completa como PDF"
+                      className="flex items-center gap-2 px-4 py-2 rounded-lg text-[11px] font-bold transition-all shadow-sm"
+                      style={{ background: exportingVista ? '#94a3b8' : currentTabCfg.color, color:'#fff', border:'none', cursor: exportingVista ? 'wait' : 'pointer' }}
+                    >
+                      {exportingVista ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+                      {exportingVista ? 'Exportando…' : 'Exportar PDF'}
+                    </button>
                   </div>
 
                   {/* KPI Cards */}
@@ -2947,6 +2965,7 @@ export default function App() {
                   </div>
                 )
               })()}
+                </div>{/* end sistemaRef */}
             </>
           )}
 

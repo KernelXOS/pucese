@@ -12,7 +12,7 @@ from app.db.session import get_db
 from app.models.docente import Docente, PersonalPeriodo
 from app.models.puntaje import PuntajeFinal
 from app.etl.registry import PERIODOS
-from app.services.pdf_service import generar_pdf_docente, generar_pdf_directorio
+from app.services.pdf_service import generar_pdf_docente, generar_pdf_directorio, generar_pdf_bulk_docentes
 
 router = APIRouter()
 
@@ -217,6 +217,42 @@ def descargar_reporte_directorio(
     from datetime import datetime as _dt
     fecha_safe = _dt.now().strftime("%Y-%m-%d")
     filename = f"Reporte_Directorio_{fecha_safe}.pdf"
+
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+class BulkReportePayload(BaseModel):
+    cedulas: List[str] = []
+
+
+@router.post("/reporte-bulk.pdf")
+def descargar_reporte_bulk(
+    payload: BulkReportePayload,
+    db: Session = Depends(get_db),
+):
+    """
+    Genera un PDF con una página completa por docente (igual que el reporte individual)
+    para todos los docentes de la lista enviada.
+    """
+    if not payload.cedulas:
+        raise HTTPException(400, "Se requiere al menos una cédula")
+    if len(payload.cedulas) > 500:
+        raise HTTPException(400, "Máximo 500 docentes por reporte")
+
+    try:
+        pdf_bytes = generar_pdf_bulk_docentes(cedulas=payload.cedulas, db=db)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    except RuntimeError as e:
+        raise HTTPException(500, str(e))
+
+    from datetime import datetime as _dt
+    fecha_safe = _dt.now().strftime("%Y-%m-%d")
+    filename = f"Reportes_Docentes_{fecha_safe}.pdf"
 
     return StreamingResponse(
         io.BytesIO(pdf_bytes),

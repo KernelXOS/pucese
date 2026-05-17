@@ -452,6 +452,150 @@ def generar_pdf_directorio(
         )
 
 
+def _build_docente_ctx(cedula: str, db: Session) -> Optional[dict]:
+    """
+    Construye el diccionario de contexto para un docente (usado en bulk PDF).
+    Reutiliza la misma lógica que generar_pdf_docente pero retorna el dict en lugar de PDF.
+    Retorna None si no hay datos para el docente.
+    """
+    docente = None
+    try:
+        docente = db.query(Docente).filter_by(cedula=cedula).first()
+    except Exception:
+        db.rollback()
+
+    if not docente:
+        docente, perfil_legacy, puntaje_actual, periodo_info = _legacy_datos(cedula, db)
+        if not docente:
+            return None
+        if not puntaje_actual:
+            return None
+        perfil = perfil_legacy
+        periodo_codigo = periodo_info["codigo"]
+    else:
+        periodo_codigo = _get_ultimo_periodo_docente(cedula, db)
+        if not periodo_codigo:
+            _, perfil_legacy, puntaje_actual, periodo_info = _legacy_datos(cedula, db)
+            if not puntaje_actual:
+                return None
+            periodo_codigo = periodo_info["codigo"]
+            perfil = perfil_legacy
+        else:
+            periodo_info = next((p for p in PERIODOS if p["codigo"] == periodo_codigo), None)
+            if not periodo_info:
+                return None
+
+            perfil = db.query(PersonalPeriodo).filter_by(
+                cedula=cedula, periodo_codigo=periodo_codigo
+            ).first()
+            if not perfil:
+                perfil = db.query(PersonalPeriodo).filter_by(cedula=cedula).first()
+
+            puntaje_actual = _get_puntaje_actual(cedula, periodo_codigo, db)
+            if not puntaje_actual:
+                _, perfil_leg, puntaje_actual, _ = _legacy_datos(cedula, db)
+                if not puntaje_actual:
+                    return None
+                if not perfil:
+                    perfil = perfil_leg
+
+    componentes = _build_componentes(puntaje_actual)
+    rank_data   = _build_ranking(cedula, periodo_codigo, puntaje_actual.modelo, puntaje_actual.puntaje_100, db)
+    periodos_lista, historico_modelos = _build_historico(cedula, db)
+
+    for row in historico_modelos:
+        for i, p in enumerate(periodos_lista):
+            if p["codigo"] == periodo_codigo:
+                row["celdas"][i]["es_actual"] = True
+
+    nivel = puntaje_actual.nivel_desempeno or "Sin datos"
+    ranking_colors = {
+        "Excelente": "#059669", "Bueno": "#0056b3",
+        "Regular": "#d97706", "Deficiente": "#dc2626",
+    }
+
+    class PerfilProxy:
+        facultad = "—"; funcion = "—"; dedicacion = "—"
+        antiguedad_str = "—"; nivel_instruccion = "—"
+
+    perfil_ctx = PerfilProxy()
+    if perfil:
+        perfil_ctx.facultad          = perfil.facultad or "—"
+        perfil_ctx.funcion           = perfil.funcion or "—"
+        perfil_ctx.dedicacion        = perfil.dedicacion or "—"
+        perfil_ctx.antiguedad_str    = _antiguedad_str(perfil.antiguedad_anos)
+        perfil_ctx.nivel_instruccion = perfil.nivel_instruccion or "—"
+
+    return {
+        "cedula":           docente.cedula,
+        "nombre_completo":  getattr(docente, "nombre_completo", None) or f"{getattr(docente,'apellidos','')} {getattr(docente,'nombres','')}".strip(),
+        "genero":           getattr(docente, "genero", None) or "—",
+        "facultad":         perfil_ctx.facultad,
+        "funcion":          perfil_ctx.funcion,
+        "dedicacion":       perfil_ctx.dedicacion,
+        "antiguedad_str":   perfil_ctx.antiguedad_str,
+        "nivel_instruccion":perfil_ctx.nivel_instruccion,
+        "periodo_label":    periodo_info["label_corto"],
+        "sistema_label":    "Sistema MEIPA" if periodo_info["sistema"] == "meipa" else "Sistema 360°",
+        "sistema_upper":    periodo_info["sistema"].upper(),
+        "puntaje_fmt":      _fmt_puntaje(puntaje_actual.puntaje_100),
+        "nivel_desempeno":  nivel,
+        "modelo_label":     MODELO_LABELS.get(puntaje_actual.modelo, puntaje_actual.modelo),
+        "ranking_str":      rank_data["ranking"],
+        "ranking_color":    ranking_colors.get(nivel, "#64748b"),
+        "percentil_str":    rank_data["percentil"],
+        "promedio_inst_str":_fmt_puntaje(rank_data.get("promedio_inst")),
+        "diff_str":         rank_data.get("diff_str", "—"),
+        "diff_color":       rank_data.get("diff_color", "#64748b"),
+        "componentes":      componentes,
+        "historico":        periodos_lista,
+        "historico_modelos":historico_modelos,
+    }
+
+
+def generar_pdf_bulk_docentes(cedulas: list, db: Session) -> bytes:
+    """
+    Genera un único PDF con una página por docente (mismo diseño que reporte individual).
+    cedulas: lista de cédulas a incluir (en el orden que lleguen).
+    """
+    from datetime import datetime as _dt
+
+    fecha_gen = _dt.now().strftime("%d/%m/%Y %H:%M")
+    docentes_ctx = []
+    for cedula in cedulas:
+        try:
+            ctx = _build_docente_ctx(cedula, db)
+            if ctx:
+                ctx["fecha_generacion"] = fecha_gen
+                docentes_ctx.append(ctx)
+        except Exception:
+            pass  # skip docentes sin datos
+
+    if not docentes_ctx:
+        raise ValueError("No se encontraron datos para los docentes solicitados")
+
+    env = Environment(loader=FileSystemLoader(TEMPLATE_DIR))
+    template = env.get_template("reporte_bulk_docentes.html")
+    html_str = template.render(logo_url=LOGO_URL, fecha_generacion=fecha_gen, docentes=docentes_ctx)
+
+    try:
+        from weasyprint import HTML as WP_HTML
+        return WP_HTML(string=html_str, base_url=TEMPLATE_DIR).write_pdf()
+    except Exception:
+        pass
+
+    try:
+        import io as _io
+        from xhtml2pdf import pisa
+        buf = _io.BytesIO()
+        status = pisa.CreatePDF(html_str, dest=buf)
+        if status.err:
+            raise RuntimeError("xhtml2pdf falló al generar el PDF bulk")
+        return buf.getvalue()
+    except ImportError:
+        raise RuntimeError("No se pudo generar el PDF. Instala xhtml2pdf: pip install xhtml2pdf")
+
+
 def generar_pdf_docente(
     cedula: str,
     db: Session,

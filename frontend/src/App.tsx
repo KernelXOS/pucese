@@ -1424,28 +1424,26 @@ function TodosDocentesPanel({ docentes, context }: { docentes: any[]; context?: 
   }
 
   const generatePDF = async () => {
+    const count = filtered.length
+    if (count > 500) {
+      alert(`El filtro actual incluye ${count} docentes. Por favor filtra a menos de 500 para generar el PDF.`)
+      return
+    }
+    if (count > 100) {
+      const ok = window.confirm(`Se generará un reporte con ${count} páginas (una por docente). Esto puede tardar un momento. ¿Continuar?`)
+      if (!ok) return
+    }
+
     setGeneratingPDF(true)
     try {
-      const titulo = context ? `Docentes — ${context.label}` : 'Todos los Docentes'
-      const payload = {
-        titulo,
-        docentes: filtered.map((d: any) => ({
-          nombre:   d.nombre   || '',
-          cedula:   d.cedula   || '',
-          facultad: d.facultad || '',
-          sistema:  d.sistema  || '',
-          modelo:   d.modelo   || '',
-          puntaje:  Number(d.puntaje) || 0,
-          nivel:    d.nivel    || '',
-        })),
-      }
+      const cedulas = filtered.map((d: any) => d.cedula).filter(Boolean)
 
       const _rawUrl = (import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1').replace(/\/+$/, '')
       const _baseUrl = _rawUrl.endsWith('/evaluacion') ? _rawUrl.slice(0, -'/evaluacion'.length) : _rawUrl
-      const res = await fetch(`${_baseUrl}/docentes/reporte-directorio.pdf`, {
+      const res = await fetch(`${_baseUrl}/docentes/reporte-bulk.pdf`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ cedulas }),
       })
 
       if (!res.ok) {
@@ -1457,7 +1455,7 @@ function TodosDocentesPanel({ docentes, context }: { docentes: any[]; context?: 
       const url  = URL.createObjectURL(blob)
       const a    = document.createElement('a')
       a.href     = url
-      a.download = `Reporte_Directorio_${new Date().toISOString().slice(0,10)}.pdf`
+      a.download = `Reportes_Docentes_${new Date().toISOString().slice(0,10)}.pdf`
       a.click()
       URL.revokeObjectURL(url)
     } catch(e) {
@@ -1523,7 +1521,7 @@ function TodosDocentesPanel({ docentes, context }: { docentes: any[]; context?: 
         <button
           onClick={generatePDF}
           disabled={generatingPDF}
-          title="Generar reporte PDF con gráficas y tabla completa"
+          title="Generar reporte PDF individual por cada docente (1 página por profesor)"
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all"
           style={{ background:'#eff6ff', color:'#0056b3', borderColor:'#bfdbfe', opacity: generatingPDF ? 0.7 : 1 }}
         >

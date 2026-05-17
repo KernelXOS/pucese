@@ -1,5 +1,9 @@
 fastapi
 uvicorn[standard]
+numpy
+pandas
+polars
+fastexcel
 openpyxl
 sqlalchemy
 psycopg2-binary
@@ -12,7 +16,6 @@ python-multipart
 python-jose[cryptography]
 passlib[bcrypt]
 bcrypt
-pandas
-numpy
 jinja2
+xhtml2pdf
 weasyprint

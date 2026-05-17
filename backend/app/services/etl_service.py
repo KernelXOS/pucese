@@ -246,10 +246,20 @@ class ETLService:
         records += self._source_hetero_xlsx(
             os.path.join(BASE, 'HETEROEVALUACION 202466.xlsx'), '202466', staff)
         records += self._source_360_mecdi_2024(staff)
-        model_scores = self._source_eval_detalladas_2025(staff)
-        self._merge_csv_hetero_2025(model_scores, staff)
-        self._reclassify_by_programa(model_scores)
-        records += self._build_360_records_2025(model_scores, staff)
+
+        # ── 2025-I ────────────────────────────────────────────────────────────
+        eval_dir_01 = os.path.join(BASE, 'eval_detalladas_2025_01')
+        if os.path.exists(eval_dir_01):
+            ms_01 = self._source_eval_detalladas_2025(staff, eval_dir=eval_dir_01)
+            self._merge_csv_hetero_2025(ms_01, staff, csv_code='202556')
+            self._reclassify_by_programa(ms_01)
+            records += self._build_360_records_2025(ms_01, staff, periodo='202501', anio=2025)
+
+        # ── 2025-II ───────────────────────────────────────────────────────────
+        ms_02 = self._source_eval_detalladas_2025(staff, eval_dir=EVAL_DIR)
+        self._merge_csv_hetero_2025(ms_02, staff, csv_code='202566')
+        self._reclassify_by_programa(ms_02)
+        records += self._build_360_records_2025(ms_02, staff, periodo='202502', anio=2025)
 
         # Wipe and reload
         db.query(Evaluacion).delete()
@@ -257,6 +267,24 @@ class ETLService:
         for rec in records:
             db.add(Evaluacion(**self._clean_rec(rec)))
         db.commit()
+
+        # Normalizar códigos de período legacy → etiquetas legibles
+        from sqlalchemy import text as _tx
+        _PNORM = [
+            ('2023-I',  "'202361','202301'"),
+            ('2023-II', "'202366','202302'"),
+            ('2024-I',  "'202461','202401'"),
+            ('2024-II', "'202402','202456','202466'"),
+            ('2025-I',  "'202501'"),
+            ('2025-II', "'202502'"),
+        ]
+        for label, codes in _PNORM:
+            db.execute(_tx(
+                f"UPDATE evaluaciones SET periodo='{label}' "
+                f"WHERE periodo IN ({codes}) AND periodo!='{label}'"
+            ))
+        db.commit()
+
         return len(records)
 
     # ── MEIPA: CONSOLIDADO HETEROEVALUACIÓN ───────────────────────────────────
@@ -761,8 +789,9 @@ class ETLService:
 
     # ── eval_detalladas_2025 ──────────────────────────────────────────────────
 
-    def _source_eval_detalladas_2025(self, staff: dict) -> dict:
-        if not os.path.exists(EVAL_DIR):
+    def _source_eval_detalladas_2025(self, staff: dict, eval_dir: str = None) -> dict:
+        target_dir = eval_dir or EVAL_DIR
+        if not os.path.exists(target_dir):
             return {}
         MAX_CAL = {3: 4, 10: 4, 11: 4, 12: 4, 13: 4}
         # Instrument codes → (modelo, componente, peso)
@@ -805,8 +834,8 @@ class ETLService:
             170:('vinculacion',  'hetero_inv', 15),
         }
 
-        frames = [pd.read_excel(os.path.join(EVAL_DIR, f), engine='openpyxl')
-                  for f in os.listdir(EVAL_DIR) if f.endswith('.xlsx')]
+        frames = [pd.read_excel(os.path.join(target_dir, f), engine='openpyxl')
+                  for f in os.listdir(target_dir) if f.endswith('.xlsx')]
         if not frames:
             return {}
         df = pd.concat(frames, ignore_index=True)
@@ -951,7 +980,7 @@ class ETLService:
 
     # ── CSV hetero 2025 ───────────────────────────────────────────────────────
 
-    def _merge_csv_hetero_2025(self, model_scores: dict, staff: dict):
+    def _merge_csv_hetero_2025(self, model_scores: dict, staff: dict, csv_code: str = None):
         INSTR_CSV = {
             _norm_str('Heteroevaluación Grado Nuevo Docencia Esmeraldas'): ('docencia','hetero_est'),
             _norm_str('Heteroevaluación Grado Nuevo Docencia Quito'):      ('docencia','hetero_est'),
@@ -962,7 +991,10 @@ class ETLService:
             _norm_str('Heteroevaluacion Grado Nuevo Docencia Quito'):      ('docencia','hetero_est'),
             _norm_str('Heteroevaluacion Grado Nuevo ABP Quito'):           ('abp','hetero_est'),
         }
-        csv_files = [f for f in os.listdir(BASE) if f.endswith('.csv') and ('202566' in f or '202556' in f)]
+        if csv_code:
+            csv_files = [f for f in os.listdir(BASE) if f.endswith('.csv') and csv_code in f]
+        else:
+            csv_files = [f for f in os.listdir(BASE) if f.endswith('.csv') and ('202566' in f or '202556' in f)]
         frames = []
         for f in csv_files:
             try:
@@ -1008,7 +1040,7 @@ class ETLService:
 
     # ── Build 360 records 2025 ────────────────────────────────────────────────
 
-    def _build_360_records_2025(self, model_scores: dict, staff: dict) -> list:
+    def _build_360_records_2025(self, model_scores: dict, staff: dict, periodo: str = '202502', anio: int = 2025) -> list:
         MODEL_WEIGHTS = {
             # Het.Est(50) + Pares(20) + CEV(10) + Auto(20) = 100
             'docencia':      {'hetero_est':50,'pares':20,'aula':10,'auto':20},
@@ -1048,7 +1080,7 @@ class ETLService:
             rec = {
                 'docente_nombre': info['nombre'] or self._build_nombre(ced, staff),
                 'facultad':       _MODELO_FACULTAD.get(modelo) or _map_facultad(programa), 'carrera': programa,
-                'periodo': '202502', 'anio': 2025, 'modelo': modelo, 'sistema': '360', 'cedula': ced,
+                'periodo': periodo, 'anio': anio, 'modelo': modelo, 'sistema': '360', 'cedula': ced,
                 'puntaje_100':    puntaje, 'promedio': round(puntaje / 100 * 5, 2),
                 'nivel_desempeno': _nivel_from_puntaje(puntaje),
                 'comp_auto':       round(comp_vals.get('auto', 0), 2),

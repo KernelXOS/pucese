@@ -534,6 +534,7 @@ function ComparativoPanel({ comparativo }: { comparativo: any }) {
   const generoPorPeriodo: any[]  = comparativo.genero_por_periodo       || []
   const edadPorPeriodo:   any[]  = comparativo.edad_por_periodo         || []
   const antiguedadPorPeriodo: any[] = comparativo.antiguedad_por_periodo || []
+  const facultadPorPeriodo: any[]   = comparativo.facultad_por_periodo   || []
   const porFacultad: any[] = comparativo.por_facultad   || []
   const porGenero: Record<string, number> = comparativo.por_genero || {}
   const porEdad: Record<string, number|null> = comparativo.por_edad || {}
@@ -795,15 +796,51 @@ function ComparativoPanel({ comparativo }: { comparativo: any }) {
         })()}
       </div>
 
-      {/* ── Row 3: Facultades ─────────────────────────────────────────────── */}
-      {porFacultad.length > 0 && (() => {
-        const fL = porFacultad.map((f:any)=>f.facultad)
-        const fV = porFacultad.map((f:any)=>+(f.promedio||0))
-        const fC = fV.map(v=>v>=90?'#047857':v>=75?'#0f5ca8':v>=60?'#b45309':'#b91c1c')
-        const ch = excel3DBar(fL, fV, fC, { maxY:108, tickAngle:-35, marginB:115 })
+      {/* ── Row 3: Facultades por período ────────────────────────────────── */}
+      {facultadPorPeriodo.length > 0 && (() => {
+        // pivot: { facultad -> { periodo -> promedio } }
+        const periodoSet: string[] = []
+        const facMap: Record<string, Record<string, number|null>> = {}
+        for (const row of facultadPorPeriodo) {
+          if (!periodoSet.includes(row.periodo)) periodoSet.push(row.periodo)
+          if (!facMap[row.facultad]) facMap[row.facultad] = {}
+          facMap[row.facultad][row.periodo] = row.promedio
+        }
+        // sort periods by anio then periodo string
+        const periodosSorted = periodoSet // already ordered from backend (ORDER BY anio, periodo)
+        // palette for up to 15 facultades
+        const FAC_COLORS = [
+          '#0f5ca8','#047857','#b45309','#6d28d9','#be123c',
+          '#0891b2','#15803d','#c2410c','#7c3aed','#9f1239',
+          '#1d4ed8','#065f46','#92400e','#5b21b6','#881337',
+        ]
+        const facultades = Object.keys(facMap)
+        const traces = facultades.map((fac, i) => ({
+          type: 'scatter' as const,
+          mode: 'lines+markers' as const,
+          name: fac,
+          x: periodosSorted,
+          y: periodosSorted.map(p => facMap[fac][p] ?? null),
+          line: { color: FAC_COLORS[i % FAC_COLORS.length], width: 2.2 },
+          marker: { color: FAC_COLORS[i % FAC_COLORS.length], size: 7, symbol: 'circle' },
+          connectgaps: false,
+          hovertemplate: `<b>${fac}</b><br>%{x}<br>%{y:.1f}/100<extra></extra>`,
+        }))
+        const allVals = facultadPorPeriodo.map((r:any) => r.promedio).filter(Boolean)
+        const yMin = allVals.length ? Math.max(0, Math.floor(Math.min(...allVals)) - 5) : 60
         return (
-          <ChartCard title="Ranking de Unidades Académicas — Puntaje Promedio Global" sub="Facultades / Carreras">
-            <Plot data={ch.data} layout={ch.layout} config={{responsive:true,displayModeBar:false}} style={{width:'100%',height:'360px'}} />
+          <ChartCard title="Ranking de Unidades Académicas — Evolución por Período" sub="Facultades / Carreras">
+            <Plot data={traces} layout={{
+              autosize: true, paper_bgcolor:'white', plot_bgcolor:'white',
+              font: { family:'Inter', size:9 },
+              margin: { t:10, b:50, l:42, r:10 },
+              xaxis: { type:'category' as const, tickfont:{ size:9, color:'#1e293b' }, showgrid:false, zeroline:false },
+              yaxis: { gridcolor:'#f0f4f8', range:[yMin, 102], tickfont:{ size:8, color:'#94a3b8' }, showgrid:true, zeroline:false },
+              legend: { orientation:'h' as const, y:-0.20, font:{ size:8 }, traceorder:'normal' },
+              showlegend: true,
+              shapes:[{ type:'line', x0:0, x1:1, xref:'paper', y0:90, y1:90,
+                line:{ color:'#10b981', width:1.2, dash:'dot' } }],
+            }} config={{responsive:true,displayModeBar:false}} style={{width:'100%',height:'380px'}} />
           </ChartCard>
         )
       })()}

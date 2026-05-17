@@ -450,6 +450,25 @@ class KPIService:
                 entry2[b] = round(sum(v)/len(v), 2) if v else None
             antiguedad_por_periodo.append(entry2)
 
+        # ── Facultad × período ────────────────────────────────────────────────
+        fp_rows = (
+            q_all.with_entities(
+                Evaluacion.periodo, Evaluacion.anio,
+                Evaluacion.facultad,
+                func.avg(Evaluacion.puntaje_100),
+                func.count(Evaluacion.id),
+            )
+            .filter(Evaluacion.periodo != None, Evaluacion.facultad != None, Evaluacion.facultad != '')
+            .group_by(Evaluacion.periodo, Evaluacion.anio, Evaluacion.facultad)
+            .order_by(Evaluacion.anio, Evaluacion.periodo)
+            .all()
+        )
+        facultad_por_periodo = [
+            {'periodo': r[0], 'anio': r[1], 'facultad': r[2],
+             'promedio': round(float(r[3]), 2) if r[3] else None, 'n': r[4]}
+            for r in fp_rows if r[2]
+        ]
+
         # ── Mejores y Peores por modelo 360 ──────────────────────────────────
         RANKING_MODELS = {
             'Pregrado':      'docencia',
@@ -637,6 +656,7 @@ class KPIService:
             'genero_por_periodo':      genero_por_periodo,
             'edad_por_periodo':        edad_por_periodo,
             'antiguedad_por_periodo':  antiguedad_por_periodo,
+            'facultad_por_periodo':    facultad_por_periodo,
             'por_facultad':       por_facultad,
             'por_genero':         por_genero,
             'por_edad':           por_edad,

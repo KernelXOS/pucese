@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import Plot from 'react-plotly.js'
 import { api } from './services/api'
 import {
@@ -1904,6 +1904,8 @@ export default function App() {
   const [processing, setProcessing]   = useState(false)
   const [searchTerm, setSearchTerm]   = useState('')
   const [splashVisible, setSplashVisible] = useState(true)
+  const comparativoRef   = useRef<HTMLDivElement>(null)
+  const [exportingComp, setExportingComp] = useState(false)
 
   // ── Períodos v2 ────────────────────────────────────────────────────────────
   const [periodos, setPeriodos]           = useState<any[]>([])
@@ -2040,6 +2042,84 @@ export default function App() {
     const c = componentes[k]
     return c ? c.promedio : 0
   })
+
+  const exportComparativoPDF = async () => {
+    if (!comparativoRef.current) return
+    setExportingComp(true)
+    try {
+      const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
+        import('jspdf'),
+        import('html2canvas'),
+      ])
+      const el = comparativoRef.current
+      const canvas = await html2canvas(el, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#f5f7fa',
+        width: el.scrollWidth,
+        height: el.scrollHeight,
+        windowWidth: el.scrollWidth,
+      })
+      const pageW = 210
+      const pageH = 297
+      const margin = 10
+      const contentW = pageW - margin * 2
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+
+      // Header bar
+      pdf.setFillColor(0, 86, 179)
+      pdf.rect(0, 0, pageW, 13, 'F')
+      pdf.setTextColor(255, 255, 255)
+      pdf.setFont('helvetica', 'bold'); pdf.setFontSize(9.5)
+      pdf.text('PUCESE — Vista Comparativa MEIPA vs 360', margin, 9)
+      pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7)
+      pdf.text(new Date().toLocaleDateString('es-EC', { year:'numeric', month:'long', day:'numeric' }), pageW - margin, 9, { align:'right' })
+
+      // Slice canvas across A4 pages
+      const imgW = canvas.width
+      const imgH = canvas.height
+      const ratio = contentW / (imgW / 2)          // canvas scale:2 → divide by 2
+      const totalImgMm = (imgH / 2) * ratio        // total height in mm
+
+      const firstSliceH = pageH - 13 - margin - 8  // below header, above footer
+      const otherSliceH = pageH - margin * 2 - 6
+
+      let yRendered = 0
+      let pageIdx   = 0
+
+      while (yRendered < totalImgMm) {
+        const sliceH    = pageIdx === 0 ? firstSliceH : otherSliceH
+        const yStart    = pageIdx === 0 ? 13 + margin : margin
+
+        const srcYpx    = Math.round((yRendered / totalImgMm) * imgH)
+        const srcHpx    = Math.min(Math.round((sliceH / totalImgMm) * imgH), imgH - srcYpx)
+        if (srcHpx <= 0) break
+
+        const slice     = document.createElement('canvas')
+        slice.width     = imgW
+        slice.height    = srcHpx
+        slice.getContext('2d')!.drawImage(canvas, 0, srcYpx, imgW, srcHpx, 0, 0, imgW, srcHpx)
+
+        const sliceHmm  = (srcHpx / 2) * ratio
+        pdf.addImage(slice.toDataURL('image/jpeg', 0.92), 'JPEG', margin, yStart, contentW, sliceHmm)
+
+        // Footer
+        pdf.setFont('helvetica', 'normal'); pdf.setFontSize(6); pdf.setTextColor(180, 180, 180)
+        pdf.text('PUCESE · Dirección de Calidad y Acreditación · Documento Confidencial', margin, pageH - 5)
+        pdf.text(`Pág. ${pageIdx + 1}`, pageW - margin, pageH - 5, { align:'right' })
+
+        yRendered += sliceH
+        if (yRendered < totalImgMm) { pdf.addPage(); pageIdx++ }
+      }
+
+      pdf.save(`Vista_Comparativa_PUCESE_${new Date().toISOString().slice(0,10)}.pdf`)
+    } catch(err) {
+      console.error('Error exportando PDF:', err)
+      alert('Error al generar el PDF. Intente de nuevo.')
+    }
+    setExportingComp(false)
+  }
 
   const [sidebarOpen, setSidebarOpen]     = useState(true)
   const [expandedMEIPA, setExpandedMEIPA] = useState(true)
@@ -2479,13 +2559,24 @@ export default function App() {
           {sistema === 'overview' && (
             <>
               <div className="flex items-center gap-3 mb-6">
-                <div>
+                <div className="flex-1">
                   <h2 className="text-base font-bold text-slate-800">Vista Comparativa — MEIPA vs 360</h2>
                   <p className="text-[11px] text-slate-400">Análisis cruzado de ambos sistemas de evaluación docente</p>
                 </div>
-                {loading && <div className="ml-auto w-4 h-4 rounded-full border-2 border-slate-200 border-t-[#1e40af] animate-spin" />}
+                {loading && <div className="w-4 h-4 rounded-full border-2 border-slate-200 border-t-[#1e40af] animate-spin" />}
+                <button
+                  onClick={exportComparativoPDF}
+                  disabled={exportingComp || loading}
+                  title="Exportar vista comparativa completa como PDF"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all"
+                  style={{ background:'#eff6ff', color:'#0056b3', borderColor:'#bfdbfe', opacity: exportingComp ? 0.7 : 1 }}
+                >
+                  {exportingComp ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
+                  {exportingComp ? 'Exportando…' : 'PDF'}
+                </button>
               </div>
-              <ComparativoPanel comparativo={comparativo} />
+              <div ref={comparativoRef}>
+                <ComparativoPanel comparativo={comparativo} />
               {comparativo?.mejores_peores && Object.keys(comparativo.mejores_peores).length > 0 && (
                 <MejoresPeoresPanel mejoresPeores={comparativo.mejores_peores} />
               )}
@@ -2518,6 +2609,7 @@ export default function App() {
                 <TodosDocentesPanel docentes={todosDocentes} />
               )}
               <AIConsultaPanel anio={activeAnio} />
+              </div>{/* end comparativoRef */}
             </>
           )}
 

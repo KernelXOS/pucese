@@ -450,6 +450,54 @@ class KPIService:
                 entry2[b] = round(sum(v)/len(v), 2) if v else None
             antiguedad_por_periodo.append(entry2)
 
+        # ── Género × Edad × período ───────────────────────────────────────────
+        gep_raw = (
+            q_all.with_entities(Evaluacion.periodo, Evaluacion.anio, Evaluacion.sexo,
+                                Evaluacion.edad, Evaluacion.puntaje_100)
+            .filter(Evaluacion.periodo != None, Evaluacion.sexo != None,
+                    Evaluacion.edad != None, Evaluacion.puntaje_100 != None).all()
+        )
+        _gep: dict = {}
+        _gep_meta: dict = {}
+        for periodo, anio_val, sexo, edad, pun in gep_raw:
+            if not periodo: continue
+            gkey = _GENERO_NORM.get(str(sexo).lower().strip(), str(sexo).strip())
+            if edad < 30:    bkt = '< 30 años'
+            elif edad <= 45: bkt = '31-45 años'
+            elif edad <= 60: bkt = '46-60 años'
+            else:            bkt = '61+ años'
+            _gep.setdefault((periodo, gkey, bkt), []).append(float(pun))
+            _gep_meta[periodo] = anio_val
+        genero_edad_por_periodo = [
+            {'periodo': k[0], 'anio': _gep_meta.get(k[0]), 'genero': k[1], 'bracket': k[2],
+             'promedio': round(sum(v)/len(v), 2) if v else None}
+            for k, v in sorted(_gep.items(), key=lambda x: (_gep_meta.get(x[0][0], 0), x[0][0]))
+        ]
+
+        # ── Género × Antigüedad × período ─────────────────────────────────────
+        gap_raw = (
+            q_all.with_entities(Evaluacion.periodo, Evaluacion.anio, Evaluacion.sexo,
+                                Evaluacion.antiguedad_anos, Evaluacion.puntaje_100)
+            .filter(Evaluacion.periodo != None, Evaluacion.sexo != None,
+                    Evaluacion.antiguedad_anos != None, Evaluacion.puntaje_100 != None).all()
+        )
+        _gap: dict = {}
+        _gap_meta: dict = {}
+        for periodo, anio_val, sexo, ant, pun in gap_raw:
+            if not periodo: continue
+            gkey = _GENERO_NORM.get(str(sexo).lower().strip(), str(sexo).strip())
+            if ant <= 3:    bkt = '0-3 años'
+            elif ant <= 10: bkt = '4-10 años'
+            elif ant <= 20: bkt = '11-20 años'
+            else:           bkt = '20+ años'
+            _gap.setdefault((periodo, gkey, bkt), []).append(float(pun))
+            _gap_meta[periodo] = anio_val
+        genero_antiguedad_por_periodo = [
+            {'periodo': k[0], 'anio': _gap_meta.get(k[0]), 'genero': k[1], 'bracket': k[2],
+             'promedio': round(sum(v)/len(v), 2) if v else None}
+            for k, v in sorted(_gap.items(), key=lambda x: (_gap_meta.get(x[0][0], 0), x[0][0]))
+        ]
+
         # ── Facultad × período ────────────────────────────────────────────────
         fp_rows = (
             q_all.with_entities(
@@ -656,7 +704,9 @@ class KPIService:
             'genero_por_periodo':      genero_por_periodo,
             'edad_por_periodo':        edad_por_periodo,
             'antiguedad_por_periodo':  antiguedad_por_periodo,
-            'facultad_por_periodo':    facultad_por_periodo,
+            'facultad_por_periodo':           facultad_por_periodo,
+            'genero_edad_por_periodo':        genero_edad_por_periodo,
+            'genero_antiguedad_por_periodo':  genero_antiguedad_por_periodo,
             'por_facultad':       por_facultad,
             'por_genero':         por_genero,
             'por_edad':           por_edad,

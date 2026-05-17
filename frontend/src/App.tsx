@@ -541,6 +541,8 @@ function ComparativoPanel({ comparativo }: { comparativo: any }) {
   const porAnt: Record<string, number|null>  = comparativo.por_antiguedad || {}
   const generoEdad: Record<string, Record<string, number|null>> = comparativo.genero_edad || {}
   const generoAnt: Record<string, Record<string, number|null>>  = comparativo.genero_antiguedad || {}
+  const generoEdadPorPeriodo: any[]       = comparativo.genero_edad_por_periodo       || []
+  const generoAntiguedadPorPeriodo: any[] = comparativo.genero_antiguedad_por_periodo || []
 
   const AGE_BRACKETS  = ['< 30 años', '31-45 años', '46-60 años', '61+ años']
   const ANTIG_BRACKETS = ['0-3 años', '4-10 años', '11-20 años', '20+ años']
@@ -962,27 +964,104 @@ function ComparativoPanel({ comparativo }: { comparativo: any }) {
         })()}
       </div>
 
-      {/* ── Row 5: Género × Edad/Antigüedad cross-analysis ────────────────── */}
-      {(Object.keys(generoEdad).length > 0 || Object.keys(generoAnt).length > 0) && (
+      {/* ── Row 5: Género × Edad/Antigüedad cross-analysis por período ──── */}
+      {(generoEdadPorPeriodo.length > 0 || generoAntiguedadPorPeriodo.length > 0) && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          {Object.keys(generoEdad).length > 0 && (() => {
-            const sE = Object.entries(generoEdad).map(([gen,br])=>({name:gen,color:GENDER_COLORS[gen]||'#64748b',values:AGE_BRACKETS.map(b=>br[b]??null)}))
-            const ch = excel3DGrouped(AGE_BRACKETS, sE)
+
+          {/* Mujer vs Hombre × Rango de Edad × Período */}
+          {generoEdadPorPeriodo.length > 0 && (() => {
+            // pivot flat rows → { "Mujer_< 30 años": { periodo: val } }
+            const periodoSet: string[] = []
+            const seriesMap: Record<string, Record<string, number|null>> = {}
+            for (const row of generoEdadPorPeriodo) {
+              if (!periodoSet.includes(row.periodo)) periodoSet.push(row.periodo)
+              const key = `${row.genero}_${row.bracket}`
+              if (!seriesMap[key]) seriesMap[key] = {}
+              seriesMap[key][row.periodo] = row.promedio
+            }
+            // colors: pink shades for Mujer, blue shades for Hombre
+            const MUJER_SHADES = ['#f43f5e','#fb7185','#fda4af','#fecdd3']
+            const HOMBRE_SHADES = ['#1d4ed8','#3b82f6','#60a5fa','#93c5fd']
+            const traces = AGE_BRACKETS.flatMap((b, i) => {
+              return ['Mujer','Hombre'].map(g => {
+                const key = `${g}_${b}`
+                const color = g === 'Mujer' ? MUJER_SHADES[i] : HOMBRE_SHADES[i]
+                return {
+                  type: 'scatter' as const, mode: 'lines+markers' as const,
+                  name: `${g} ${b}`,
+                  x: periodoSet,
+                  y: periodoSet.map(p => seriesMap[key]?.[p] ?? null),
+                  line: { color, width: 2, dash: g === 'Hombre' ? 'dash' as const : 'solid' as const },
+                  marker: { color, size: 6, symbol: g === 'Hombre' ? 'square' as const : 'circle' as const },
+                  connectgaps: false,
+                  hovertemplate: `<b>${g} ${b}</b><br>%{x}<br>%{y:.1f}/100<extra></extra>`,
+                }
+              })
+            })
+            const allV = generoEdadPorPeriodo.map((r:any)=>r.promedio).filter(Boolean)
+            const yMin = allV.length ? Math.max(0, Math.floor(Math.min(...allV)) - 5) : 60
             return (
-              <ChartCard title="Mujer vs Hombre — Por Rango de Edad" sub="Análisis cruzado">
-                <Plot data={ch.data} layout={ch.layout} config={{responsive:true,displayModeBar:false}} style={{width:'100%',height:'280px'}} />
+              <ChartCard title="Mujer vs Hombre — Por Rango de Edad" sub="Análisis cruzado · Por período">
+                <Plot data={traces} layout={{
+                  autosize:true, paper_bgcolor:'white', plot_bgcolor:'white',
+                  font:{ family:'Inter', size:9 },
+                  margin:{ t:10, b:90, l:42, r:10 },
+                  xaxis:{ type:'category' as const, tickfont:{ size:9, color:'#1e293b' }, showgrid:false, zeroline:false },
+                  yaxis:{ gridcolor:'#f0f4f8', range:[yMin, 102], tickfont:{ size:8, color:'#94a3b8' }, showgrid:true, zeroline:false },
+                  legend:{ orientation:'h' as const, y:-0.38, font:{ size:7.5 }, traceorder:'normal' },
+                  showlegend:true,
+                  shapes:[{ type:'line', x0:0, x1:1, xref:'paper', y0:90, y1:90, line:{ color:'#10b981', width:1, dash:'dot' } }],
+                }} config={{responsive:true,displayModeBar:false}} style={{width:'100%',height:'310px'}} />
               </ChartCard>
             )
           })()}
-          {Object.keys(generoAnt).length > 0 && (() => {
-            const sA = Object.entries(generoAnt).map(([gen,br])=>({name:gen,color:GENDER_COLORS[gen]||'#64748b',values:ANTIG_BRACKETS.map(b=>br[b]??null)}))
-            const ch = excel3DGrouped(ANTIG_BRACKETS, sA)
+
+          {/* Mujer vs Hombre × Antigüedad × Período */}
+          {generoAntiguedadPorPeriodo.length > 0 && (() => {
+            const periodoSet: string[] = []
+            const seriesMap: Record<string, Record<string, number|null>> = {}
+            for (const row of generoAntiguedadPorPeriodo) {
+              if (!periodoSet.includes(row.periodo)) periodoSet.push(row.periodo)
+              const key = `${row.genero}_${row.bracket}`
+              if (!seriesMap[key]) seriesMap[key] = {}
+              seriesMap[key][row.periodo] = row.promedio
+            }
+            const MUJER_SHADES = ['#f43f5e','#fb7185','#fda4af','#fecdd3']
+            const HOMBRE_SHADES = ['#1d4ed8','#3b82f6','#60a5fa','#93c5fd']
+            const traces = ANTIG_BRACKETS.flatMap((b, i) => {
+              return ['Mujer','Hombre'].map(g => {
+                const key = `${g}_${b}`
+                const color = g === 'Mujer' ? MUJER_SHADES[i] : HOMBRE_SHADES[i]
+                return {
+                  type: 'scatter' as const, mode: 'lines+markers' as const,
+                  name: `${g} ${b}`,
+                  x: periodoSet,
+                  y: periodoSet.map(p => seriesMap[key]?.[p] ?? null),
+                  line: { color, width: 2, dash: g === 'Hombre' ? 'dash' as const : 'solid' as const },
+                  marker: { color, size: 6, symbol: g === 'Hombre' ? 'square' as const : 'circle' as const },
+                  connectgaps: false,
+                  hovertemplate: `<b>${g} ${b}</b><br>%{x}<br>%{y:.1f}/100<extra></extra>`,
+                }
+              })
+            })
+            const allV = generoAntiguedadPorPeriodo.map((r:any)=>r.promedio).filter(Boolean)
+            const yMin = allV.length ? Math.max(0, Math.floor(Math.min(...allV)) - 5) : 60
             return (
-              <ChartCard title="Mujer vs Hombre — Por Antigüedad" sub="Análisis cruzado">
-                <Plot data={ch.data} layout={ch.layout} config={{responsive:true,displayModeBar:false}} style={{width:'100%',height:'280px'}} />
+              <ChartCard title="Mujer vs Hombre — Por Antigüedad" sub="Análisis cruzado · Por período">
+                <Plot data={traces} layout={{
+                  autosize:true, paper_bgcolor:'white', plot_bgcolor:'white',
+                  font:{ family:'Inter', size:9 },
+                  margin:{ t:10, b:90, l:42, r:10 },
+                  xaxis:{ type:'category' as const, tickfont:{ size:9, color:'#1e293b' }, showgrid:false, zeroline:false },
+                  yaxis:{ gridcolor:'#f0f4f8', range:[yMin, 102], tickfont:{ size:8, color:'#94a3b8' }, showgrid:true, zeroline:false },
+                  legend:{ orientation:'h' as const, y:-0.38, font:{ size:7.5 }, traceorder:'normal' },
+                  showlegend:true,
+                  shapes:[{ type:'line', x0:0, x1:1, xref:'paper', y0:90, y1:90, line:{ color:'#10b981', width:1, dash:'dot' } }],
+                }} config={{responsive:true,displayModeBar:false}} style={{width:'100%',height:'310px'}} />
               </ChartCard>
             )
           })()}
+
         </div>
       )}
 

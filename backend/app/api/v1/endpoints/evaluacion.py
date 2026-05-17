@@ -128,9 +128,17 @@ def get_comparativo(
 def get_todos_docentes(
     db: Session = Depends(get_db),
     anio: Optional[int] = None,
+    modelo: Optional[str] = None,
+    sistema: Optional[str] = None,
 ):
-    """All teachers with per-component breakdown."""
-    return kpi_service.get_todos_docentes(db, anio=anio)
+    """All teachers with per-component breakdown, optionally filtered by modelo and sistema."""
+    return kpi_service.get_todos_docentes(db, anio=anio, modelo=modelo, sistema=sistema)
+
+
+@router.get("/competencias/{cedula}")
+def get_competencias_docente(cedula: str, db: Session = Depends(get_db)):
+    """Per-competency breakdown for a teacher from RespuestaRaw (360°) and PuntajeFinal (MEIPA)."""
+    return kpi_service.get_competencias_docente(db, cedula=cedula)
 
 
 @router.post("/consulta-ia")
@@ -138,7 +146,7 @@ def consulta_ia(body: ConsultaRequest, db: Session = Depends(get_db)):
     """Answer a free-form question about teacher evaluation using real data + Gemini."""
     comparativo = kpi_service.get_comparativo(db, anio=body.anio)
     ranking_top = kpi_service.get_ranking_docentes(db, limit=50)
-    criticos    = kpi_service.get_docentes_criticos(db, threshold=3.5)  # <70/100
+    criticos    = kpi_service.get_docentes_criticos(db, threshold=3.5)
 
     context = {
         'comparativo': comparativo,

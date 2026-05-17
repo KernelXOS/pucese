@@ -12,7 +12,18 @@ import numpy as np
 from sqlalchemy.orm import Session
 from app.models.evaluacion import Evaluacion
 
-BASE     = r'C:\Users\KernelXos\Desktop\DATOS_DOCENTE'
+_HERE    = os.path.dirname(os.path.abspath(__file__))
+_BACKEND = os.path.dirname(os.path.dirname(_HERE))
+
+_DATA_CANDIDATES = [
+    '/app/data',
+    os.path.join(_BACKEND, 'data'),
+    os.path.join(os.getcwd(), 'data'),
+    r'C:\Users\grego\Desktop\DATOS REALES',
+    r'C:\Users\KernelXos\Desktop\DATOS_DOCENTE',
+]
+
+BASE     = next((p for p in _DATA_CANDIDATES if os.path.isdir(p)), _DATA_CANDIDATES[0])
 EVAL_DIR = os.path.join(BASE, 'eval_detalladas_2025_02')
 STAFF_REF_DATE = datetime(2025, 1, 1)
 
@@ -50,7 +61,6 @@ FACULTAD_MAP = {
     'MENTOR':             'Sin clasificar',
     'NO DEFINIDA':        'Sin clasificar',
 }
-
 
 def _map_facultad(text: str) -> str:
     if not text or pd.isna(text):

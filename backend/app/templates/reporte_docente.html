@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<style>
+  @page {
+    size: A4;
+    margin: 14mm 14mm 14mm 14mm;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-size: 9pt;
+    color: #1e293b;
+    background: #fff;
+  }
+
+  /* ── HEADER ── */
+  .header {
+    display: flex;
+    align-items: center;
+    border-bottom: 3px solid #0056b3;
+    padding-bottom: 10px;
+    margin-bottom: 14px;
+  }
+  .header-logo-area {
+    width: 80px;
+    flex-shrink: 0;
+  }
+  .header-logo-area img { width: 72px; }
+  .header-text { flex: 1; padding-left: 10px; }
+  .header-inst {
+    font-size: 7pt;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 700;
+  }
+  .header-title {
+    font-size: 13pt;
+    font-weight: 900;
+    color: #0056b3;
+    line-height: 1.2;
+    margin-top: 2px;
+  }
+  .header-sub {
+    font-size: 7.5pt;
+    color: #475569;
+    margin-top: 3px;
+  }
+  .header-badge {
+    background: #0056b3;
+    color: #fff;
+    font-size: 7pt;
+    font-weight: 800;
+    padding: 4px 10px;
+    border-radius: 4px;
+    text-align: center;
+    white-space: nowrap;
+  }
+  .header-badge span { display: block; font-size: 10pt; font-weight: 900; }
+
+  /* ── SECCIÓN DOCENTE ── */
+  .section-title {
+    font-size: 7pt;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: #0056b3;
+    border-left: 3px solid #0056b3;
+    padding-left: 7px;
+    margin-bottom: 8px;
+    margin-top: 14px;
+  }
+
+  .info-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    margin-bottom: 4px;
+  }
+  .info-card {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 5px;
+    padding: 7px 9px;
+  }
+  .info-label {
+    font-size: 6.5pt;
+    font-weight: 700;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 2px;
+  }
+  .info-value {
+    font-size: 8.5pt;
+    font-weight: 700;
+    color: #1e293b;
+  }
+
+  /* ── PUNTAJE PRINCIPAL ── */
+  .score-hero {
+    display: flex;
+    align-items: stretch;
+    gap: 10px;
+    margin-bottom: 4px;
+  }
+  .score-main {
+    background: linear-gradient(135deg, #0056b3, #1a78d4);
+    color: #fff;
+    border-radius: 7px;
+    padding: 14px 20px;
+    text-align: center;
+    min-width: 130px;
+  }
+  .score-main .score-num {
+    font-size: 30pt;
+    font-weight: 900;
+    line-height: 1;
+  }
+  .score-main .score-label {
+    font-size: 7pt;
+    font-weight: 700;
+    opacity: 0.8;
+    margin-top: 3px;
+  }
+  .score-main .score-nivel {
+    font-size: 8pt;
+    font-weight: 800;
+    background: rgba(255,255,255,0.2);
+    border-radius: 4px;
+    padding: 2px 8px;
+    margin-top: 6px;
+    display: inline-block;
+  }
+  .score-side {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .stat-row {
+    display: flex;
+    gap: 6px;
+    flex: 1;
+  }
+  .stat-box {
+    flex: 1;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 5px;
+    padding: 7px 9px;
+    text-align: center;
+  }
+  .stat-box .stat-num {
+    font-size: 12pt;
+    font-weight: 900;
+    color: #0056b3;
+  }
+  .stat-box .stat-lbl {
+    font-size: 6pt;
+    color: #94a3b8;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-top: 1px;
+  }
+
+  /* ── COMPONENTES ── */
+  .comp-table { width: 100%; border-collapse: collapse; }
+  .comp-table th {
+    background: #f1f5f9;
+    font-size: 6.5pt;
+    font-weight: 800;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 5px 7px;
+    text-align: left;
+    border-bottom: 2px solid #e2e8f0;
+  }
+  .comp-table td {
+    padding: 5px 7px;
+    border-bottom: 1px solid #f1f5f9;
+    font-size: 8pt;
+  }
+  .comp-table tr:last-child td { border-bottom: none; }
+
+  .bar-wrap {
+    width: 100%;
+    background: #f1f5f9;
+    border-radius: 3px;
+    height: 7px;
+    overflow: hidden;
+  }
+  .bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: linear-gradient(90deg, #0056b3, #1a78d4);
+  }
+  .bar-fill.nivel-excelente { background: linear-gradient(90deg, #059669, #10b981); }
+  .bar-fill.nivel-bueno     { background: linear-gradient(90deg, #0056b3, #1a78d4); }
+  .bar-fill.nivel-regular   { background: linear-gradient(90deg, #d97706, #f59e0b); }
+  .bar-fill.nivel-deficiente{ background: linear-gradient(90deg, #dc2626, #ef4444); }
+
+  .badge-nivel {
+    display: inline-block;
+    font-size: 6.5pt;
+    font-weight: 800;
+    padding: 2px 7px;
+    border-radius: 3px;
+  }
+  .badge-Excelente  { background: #ecfdf5; color: #059669; border: 1px solid #a7f3d0; }
+  .badge-Bueno      { background: #eff6ff; color: #0056b3; border: 1px solid #bfdbfe; }
+  .badge-Regular    { background: #fef3c7; color: #d97706; border: 1px solid #fde68a; }
+  .badge-Deficiente { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+  .badge-Sin-datos  { background: #f8fafc; color: #94a3b8; border: 1px solid #e2e8f0; }
+
+  /* ── HISTÓRICO POR PERÍODOS ── */
+  .hist-table { width: 100%; border-collapse: collapse; }
+  .hist-table th {
+    background: #f1f5f9;
+    font-size: 6.5pt;
+    font-weight: 800;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 5px 7px;
+    text-align: center;
+    border-bottom: 2px solid #e2e8f0;
+  }
+  .hist-table th:first-child { text-align: left; }
+  .hist-table td {
+    padding: 5px 7px;
+    border-bottom: 1px solid #f1f5f9;
+    font-size: 8pt;
+    text-align: center;
+  }
+  .hist-table td:first-child { text-align: left; font-weight: 700; }
+  .hist-table tr:last-child td { border-bottom: none; }
+  .hist-table .current-col {
+    background: #eff6ff;
+    font-weight: 900;
+    color: #0056b3;
+  }
+  .trend-up   { color: #059669; font-weight: 800; }
+  .trend-down { color: #dc2626; font-weight: 800; }
+  .trend-flat { color: #94a3b8; font-weight: 700; }
+
+  /* ── FOOTER ── */
+  .footer {
+    margin-top: 16px;
+    border-top: 1px solid #e2e8f0;
+    padding-top: 7px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .footer-left {
+    font-size: 6.5pt;
+    color: #94a3b8;
+  }
+  .footer-right {
+    font-size: 6.5pt;
+    color: #94a3b8;
+    text-align: right;
+  }
+  .confidencial {
+    font-size: 6pt;
+    font-weight: 800;
+    color: #cbd5e1;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+  }
+
+  /* ── NOTA IA ── */
+  .ia-box {
+    background: #f0f9ff;
+    border: 1px solid #bae6fd;
+    border-left: 3px solid #0284c7;
+    border-radius: 5px;
+    padding: 9px 11px;
+    margin-top: 4px;
+  }
+  .ia-box .ia-title {
+    font-size: 6.5pt;
+    font-weight: 900;
+    color: #0284c7;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 4px;
+  }
+  .ia-box .ia-text {
+    font-size: 8pt;
+    color: #1e293b;
+    line-height: 1.5;
+  }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="header-logo-area">
+    <img src="{{ logo_url }}" alt="PUCESE"/>
+  </div>
+  <div class="header-text">
+    <div class="header-inst">Pontificia Universidad Católica del Ecuador · Sede Esmeraldas</div>
+    <div class="header-title">Reporte de Evaluación Docente</div>
+    <div class="header-sub">Dirección de Calidad y Acreditación · Sistema de Evaluación del Desempeño</div>
+  </div>
+  <div class="header-badge">
+    PERÍODO<br/>
+    <span>{{ periodo_label }}</span>
+    <div style="font-size:6pt; opacity:0.8; margin-top:2px;">{{ sistema_label }}</div>
+  </div>
+</div>
+
+<!-- DATOS PERSONALES -->
+<div class="section-title">Datos del Docente</div>
+<div class="info-grid">
+  <div class="info-card" style="grid-column: span 2;">
+    <div class="info-label">Apellidos y Nombres</div>
+    <div class="info-value" style="font-size:11pt; color:#0056b3;">{{ docente.nombre_completo }}</div>
+  </div>
+  <div class="info-card">
+    <div class="info-label">Cédula</div>
+    <div class="info-value">{{ docente.cedula }}</div>
+  </div>
+</div>
+<div class="info-grid">
+  <div class="info-card">
+    <div class="info-label">Facultad / Carrera</div>
+    <div class="info-value">{{ perfil.facultad or '—' }}</div>
+  </div>
+  <div class="info-card">
+    <div class="info-label">Función</div>
+    <div class="info-value">{{ perfil.funcion or '—' }}</div>
+  </div>
+  <div class="info-card">
+    <div class="info-label">Dedicación</div>
+    <div class="info-value">{{ perfil.dedicacion or '—' }}</div>
+  </div>
+  <div class="info-card">
+    <div class="info-label">Antigüedad</div>
+    <div class="info-value">{{ perfil.antiguedad_str }}</div>
+  </div>
+  <div class="info-card">
+    <div class="info-label">Género</div>
+    <div class="info-value">{{ docente.genero or '—' }}</div>
+  </div>
+  <div class="info-card">
+    <div class="info-label">Nivel de Instrucción</div>
+    <div class="info-value">{{ perfil.nivel_instruccion or '—' }}</div>
+  </div>
+</div>
+
+<!-- PUNTAJE PRINCIPAL -->
+<div class="section-title">Resultado del Período {{ periodo_label }}</div>
+<div class="score-hero">
+  <div class="score-main">
+    <div class="score-num">{{ puntaje_actual.puntaje_fmt }}</div>
+    <div class="score-label">Puntaje sobre 100</div>
+    <div class="score-nivel">{{ puntaje_actual.nivel_desempeno }}</div>
+  </div>
+  <div class="score-side">
+    <div class="stat-row">
+      <div class="stat-box">
+        <div class="stat-num">{{ puntaje_actual.modelo_label }}</div>
+        <div class="stat-lbl">Modelo</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-num" style="color:{{ ranking_color }};">{{ ranking_str }}</div>
+        <div class="stat-lbl">Ranking Inst.</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-num">{{ percentil_str }}</div>
+        <div class="stat-lbl">Percentil</div>
+      </div>
+    </div>
+    <div class="stat-row">
+      <div class="stat-box">
+        <div class="stat-num" style="font-size:8.5pt;">{{ puntaje_actual.sistema.upper() }}</div>
+        <div class="stat-lbl">Sistema</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-num" style="font-size:9pt;">{{ promedio_inst_str }}</div>
+        <div class="stat-lbl">Prom. Institución</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-num" style="font-size:9pt; color:{{ diff_color }};">{{ diff_str }}</div>
+        <div class="stat-lbl">vs Promedio</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- DESGLOSE DE COMPONENTES -->
+{% if componentes %}
+<div class="section-title">Desglose por Componente</div>
+<table class="comp-table">
+  <thead>
+    <tr>
+      <th style="width:35%">Componente</th>
+      <th style="width:10%">Peso</th>
+      <th style="width:15%">Puntaje</th>
+      <th style="width:25%">Barra</th>
+      <th style="width:15%">Nivel</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for comp in componentes %}
+    <tr>
+      <td style="font-weight:600;">{{ comp.label }}</td>
+      <td style="color:#64748b; text-align:center;">{{ comp.peso }}%</td>
+      <td style="font-weight:800; color:#0056b3; text-align:center;">{{ comp.valor_fmt }}</td>
+      <td>
+        <div class="bar-wrap">
+          <div class="bar-fill nivel-{{ comp.nivel_css }}" style="width:{{ comp.pct }}%;"></div>
+        </div>
+      </td>
+      <td>
+        <span class="badge-nivel badge-{{ comp.nivel }}">{{ comp.nivel }}</span>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+<!-- HISTÓRICO POR PERÍODOS -->
+{% if historico %}
+<div class="section-title">Evolución Histórica por Período</div>
+<table class="hist-table">
+  <thead>
+    <tr>
+      <th>Modelo</th>
+      {% for h in historico %}
+      <th {% if h.es_actual %}class="current-col"{% endif %}>{{ h.label }}</th>
+      {% endfor %}
+      <th>Tendencia</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for modelo_row in historico_modelos %}
+    <tr>
+      <td>{{ modelo_row.label }}</td>
+      {% for celda in modelo_row.celdas %}
+      <td {% if celda.es_actual %}class="current-col"{% endif %}>
+        {% if celda.valor is not none %}
+          {{ celda.valor_fmt }}
+        {% else %}
+          <span style="color:#cbd5e1;">—</span>
+        {% endif %}
+      </td>
+      {% endfor %}
+      <td>
+        {% if modelo_row.tendencia > 0 %}
+          <span class="trend-up">▲ {{ modelo_row.tendencia_fmt }}</span>
+        {% elif modelo_row.tendencia < 0 %}
+          <span class="trend-down">▼ {{ modelo_row.tendencia_fmt }}</span>
+        {% else %}
+          <span class="trend-flat">— Sin var.</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+<!-- NOTA IA (opcional) -->
+{% if ia_comentario %}
+<div class="section-title">Análisis de Desempeño</div>
+<div class="ia-box">
+  <div class="ia-title">Generado con IA · PUCESE Evaluación Docente</div>
+  <div class="ia-text">{{ ia_comentario }}</div>
+</div>
+{% endif %}
+
+<!-- FOOTER -->
+<div class="footer">
+  <div class="footer-left">
+    Generado el {{ fecha_generacion }} · PUCESE · Dirección de Calidad y Acreditación
+  </div>
+  <div class="footer-right">
+    <div class="confidencial">Documento Confidencial</div>
+    <div style="margin-top:2px;">{{ docente.cedula }} · {{ periodo_label }}</div>
+  </div>
+</div>
+
+</body>
+</html>

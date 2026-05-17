@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.models.evaluacion import Evaluacion
+from app.models.docente import PersonalPeriodo
 
 # Weight definitions per model
 MODEL_CONFIG = {
@@ -554,7 +555,7 @@ class KPIService:
          .order_by(func.avg(Evaluacion.puntaje_100).desc())\
          .limit(limit).all()
 
-        return [{
+        result = [{
             'nombre':          r[0],
             'facultad':        r[1],
             'periodo':         r[2],
@@ -573,9 +574,31 @@ class KPIService:
             'nivel':           r[15] or 'Sin datos',
             'cedula':          r[16] or '',
             'sistema':         r[17] or '',
+            'fecha_ingreso':   None,
         } for r in ranking]
 
-    def get_todos_docentes(self, db: Session, anio: int = None) -> list:
+        # Enriquecer con fecha_ingreso desde personal_periodo (más reciente por cédula)
+        cedulas = [r['cedula'] for r in result if r['cedula']]
+        if cedulas:
+            fi_rows = (
+                db.query(PersonalPeriodo.cedula, PersonalPeriodo.fecha_ingreso)
+                .filter(
+                    PersonalPeriodo.cedula.in_(cedulas),
+                    PersonalPeriodo.fecha_ingreso.isnot(None),
+                )
+                .order_by(PersonalPeriodo.periodo_codigo.desc())
+                .all()
+            )
+            fi_map: dict = {}
+            for ced, fi in fi_rows:
+                if ced not in fi_map:
+                    fi_map[ced] = fi.isoformat() if fi else None
+            for r in result:
+                r['fecha_ingreso'] = fi_map.get(r['cedula'])
+
+        return result
+
+    def get_todos_docentes(self, db: Session, anio: int = None, modelo: str = None, sistema: str = None) -> list:
         """All teachers grouped by (cedula, sistema, modelo) with per-component normalized %."""
         _COMP_CFG: dict = {
             ('360', 'docencia'):     [('het_estudiantil',50),('eval_pares',20),('aula_virtual',10),('autoevaluacion',20)],
@@ -617,6 +640,10 @@ class KPIService:
         )
         if anio:
             q = q.filter(Evaluacion.anio == anio)
+        if modelo:
+            q = q.filter(Evaluacion.modelo == modelo)
+        if sistema:
+            q = q.filter(Evaluacion.sistema == sistema)
 
         from collections import defaultdict
         groups: dict = defaultdict(list)
@@ -646,18 +673,119 @@ class KPIService:
 
             componentes.sort(key=lambda x: x['pct'], reverse=True)
             result.append({
-                'nombre':   nombre,
-                'cedula':   ced or '',
-                'sistema':  sis or '',
-                'modelo':   mod or '',
-                'facultad': facultad,
-                'puntaje':  puntaje,
-                'nivel':    nivel,
+                'nombre':      nombre,
+                'cedula':      ced or '',
+                'sistema':     sis or '',
+                'modelo':      mod or '',
+                'facultad':    facultad,
+                'puntaje':     puntaje,
+                'nivel':       nivel,
                 'componentes': componentes,
+                'fecha_ingreso': None,
             })
 
         result.sort(key=lambda x: x['puntaje'], reverse=True)
+
+        # Enriquecer con fecha_ingreso
+        cedulas = [r['cedula'] for r in result if r['cedula']]
+        if cedulas:
+            fi_rows = (
+                db.query(PersonalPeriodo.cedula, PersonalPeriodo.fecha_ingreso)
+                .filter(
+                    PersonalPeriodo.cedula.in_(cedulas),
+                    PersonalPeriodo.fecha_ingreso.isnot(None),
+                )
+                .order_by(PersonalPeriodo.periodo_codigo.desc())
+                .all()
+            )
+            fi_map: dict = {}
+            for ced2, fi in fi_rows:
+                if ced2 not in fi_map:
+                    fi_map[ced2] = fi.isoformat() if fi else None
+            for r in result:
+                r['fecha_ingreso'] = fi_map.get(r['cedula'])
+
         return result
+
+    def get_competencias_docente(self, db: Session, cedula: str) -> dict:
+        """Desglose de competencias por docente a partir de RespuestaRaw (360°) y PuntajeFinal (MEIPA)."""
+        from app.models.respuesta import RespuestaRaw
+        from app.models.puntaje import PuntajeFinal
+        from app.models.instrumento import Instrumento
+
+        # Mapa instrumento code → descripción
+        instr_map = {r.cod: r.descripcion for r in db.query(Instrumento).all()}
+
+        # ── 360°: competencias desde RespuestaRaw ────────────────────────────
+        rows_360 = (
+            db.query(
+                RespuestaRaw.competencia,
+                RespuestaRaw.cod_instrumento,
+                RespuestaRaw.periodo_codigo,
+                func.avg(RespuestaRaw.calificacion).label('avg_cal'),
+                func.count(RespuestaRaw.id).label('n'),
+            )
+            .filter(
+                RespuestaRaw.cedula_evaluado == cedula,
+                RespuestaRaw.competencia.isnot(None),
+                RespuestaRaw.competencia != '',
+                RespuestaRaw.calificacion.isnot(None),
+            )
+            .group_by(
+                RespuestaRaw.competencia,
+                RespuestaRaw.cod_instrumento,
+                RespuestaRaw.periodo_codigo,
+            )
+            .order_by(RespuestaRaw.periodo_codigo.desc(), func.avg(RespuestaRaw.calificacion).desc())
+            .all()
+        )
+
+        competencias_360 = [
+            {
+                'competencia':    comp,
+                'instrumento':    instr_map.get(cod_inst, f'Instrumento {cod_inst}'),
+                'cod_instrumento': cod_inst,
+                'periodo':        periodo,
+                'pct':            round(min(100.0, float(avg_cal) / 4.0 * 100), 1),
+                'n':              n,
+            }
+            for comp, cod_inst, periodo, avg_cal, n in rows_360
+            if comp and avg_cal is not None
+        ]
+
+        # ── MEIPA: componentes desde PuntajeFinal ────────────────────────────
+        _MEIPA_LABELS = {
+            'comp_het_est': 'Heteroevaluación Estudiantil',
+            'comp_auto':    'Autoevaluación',
+            'comp_het_dir': 'Coordinador → Docente',
+            'comp_pares':   'Evaluación de Pares',
+        }
+        meipa_rows = (
+            db.query(PuntajeFinal)
+            .filter(PuntajeFinal.cedula == cedula, PuntajeFinal.sistema == 'meipa')
+            .order_by(PuntajeFinal.periodo_codigo.desc())
+            .all()
+        )
+        competencias_meipa = []
+        for pf in meipa_rows:
+            for attr, label in _MEIPA_LABELS.items():
+                val = getattr(pf, attr, None)
+                if val is not None:
+                    competencias_meipa.append({
+                        'competencia':    label,
+                        'instrumento':    'MEIPA — Evaluación Docente',
+                        'cod_instrumento': 'meipa',
+                        'periodo':        pf.periodo_codigo,
+                        'pct':            round(float(val), 1),
+                        'n':              1,
+                    })
+
+        return {
+            '360':          competencias_360,
+            'meipa':        competencias_meipa,
+            'total_360':    len(competencias_360),
+            'total_meipa':  len(competencias_meipa),
+        }
 
     def get_docentes_criticos(self, db: Session, modelo: str = None, anio: int = None,
                                threshold: float = 3.5, sistema: str = None):

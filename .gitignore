@@ -25,6 +25,18 @@ frontend/.env.local
 frontend/.env.production
 node_modules/
 
+# ── Base de datos local ─────────────────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+
+# ── Archivos generados ───────────────────────────────────────────────────────
+*.pdf
+backend/test_output.pdf
+
+# ── Claude Code (worktrees internos) ────────────────────────────────────────
+.claude/
+
 # ── IDE / OS ────────────────────────────────────────────────────────────────
 .vscode/
 .idea/

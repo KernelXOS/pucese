@@ -6,7 +6,7 @@ import {
   FileText, Search, BookOpen, Star, CheckCircle, AlertCircle, XCircle,
   Microscope, Heart, Link2, Briefcase, GraduationCap, Calendar,
   Activity, UserCheck, Menu, Bell, LogOut, ChevronDown, ChevronRight,
-  LayoutDashboard, Building2, Cpu,
+  LayoutDashboard, Building2, Cpu, Download,
 } from 'lucide-react'
 
 const LOGO_URL = 'https://jorgebanet.com/puce/wp-content/uploads/2025/11/cropped-Logo_PUCESD.png'
@@ -1144,14 +1144,29 @@ const MODELO_COLOR: Record<string, string> = {
 }
 const SISTEMA_COLOR: Record<string, string> = { meipa:'#6d28d9', '360':'#0f5ca8' }
 
-function TodosDocentesPanel({ docentes }: { docentes: any[] }) {
+function TodosDocentesPanel({ docentes, context }: { docentes: any[]; context?: { modelo: string; sistema: string; label: string } }) {
   const [search, setSearch]           = useState('')
   const [filterSis, setFilterSis]     = useState('todos')
   const [filterMod, setFilterMod]     = useState('todos')
   const [sortBy, setSortBy]           = useState<'puntaje'|'nombre'>('puntaje')
   const [expanded, setExpanded]       = useState<string | null>(null)
   const [page, setPage]               = useState(1)
+  const [competencias, setCompetencias] = useState<Record<string, any>>({})
+  const [loadingComp, setLoadingComp]   = useState<string | null>(null)
   const PAGE = 40
+
+  const handleExpand = useCallback(async (rowKey: string, cedula: string) => {
+    if (expanded === rowKey) { setExpanded(null); return }
+    setExpanded(rowKey)
+    if (cedula && !competencias[cedula]) {
+      setLoadingComp(cedula)
+      try {
+        const res = await api.getCompetenciasDocente(cedula)
+        setCompetencias(prev => ({ ...prev, [cedula]: res.data }))
+      } catch { /* sin datos */ }
+      finally { setLoadingComp(null) }
+    }
+  }, [expanded, competencias])
 
   const modelos = Array.from(new Set(docentes.map(d => d.modelo))).sort()
 
@@ -1159,13 +1174,13 @@ function TodosDocentesPanel({ docentes }: { docentes: any[] }) {
     const q = search.trim().toLowerCase()
     return docentes
       .filter(d => {
-        if (filterSis !== 'todos' && d.sistema !== filterSis) return false
-        if (filterMod !== 'todos' && d.modelo !== filterMod) return false
+        if (!context && filterSis !== 'todos' && d.sistema !== filterSis) return false
+        if (!context && filterMod !== 'todos' && d.modelo !== filterMod) return false
         if (q && !d.nombre?.toLowerCase().includes(q) && !d.cedula?.includes(q) && !d.facultad?.toLowerCase().includes(q)) return false
         return true
       })
       .sort((a, b) => sortBy === 'puntaje' ? b.puntaje - a.puntaje : a.nombre.localeCompare(b.nombre))
-  }, [docentes, search, filterSis, filterMod, sortBy])
+  }, [docentes, search, filterSis, filterMod, sortBy, context])
 
   const total   = filtered.length
   const visible = filtered.slice(0, page * PAGE)
@@ -1189,7 +1204,9 @@ function TodosDocentesPanel({ docentes }: { docentes: any[] }) {
         <div className="flex items-center gap-2 flex-1 min-w-0">
           <Users size={14} className="text-slate-500 flex-shrink-0" />
           <span className="text-[9px] font-bold text-slate-400 uppercase tracking-[0.2em]">Directorio ·</span>
-          <h3 className="text-[13px] font-bold text-slate-700">Todos los Docentes — Desglose por Variables</h3>
+          <h3 className="text-[13px] font-bold text-slate-700">
+            {context ? `Docentes — ${context.label}` : 'Todos los Docentes — Desglose por Variables'}
+          </h3>
         </div>
         <span className="text-[9px] font-bold px-2 py-1 rounded border border-slate-200 bg-slate-50 text-slate-500">
           {total} de {docentes.length} docentes
@@ -1208,19 +1225,23 @@ function TodosDocentesPanel({ docentes }: { docentes: any[] }) {
             className="w-full pl-8 pr-3 py-1.5 text-[11px] border border-slate-200 rounded-lg bg-white outline-none focus:border-slate-400"
           />
         </div>
-        {/* Sistema */}
-        <select value={filterSis} onChange={e => { setFilterSis(e.target.value); setPage(1) }}
-          className="text-[11px] font-bold border border-slate-200 rounded-lg px-3 py-1.5 bg-white outline-none text-slate-600">
-          <option value="todos">Todos los sistemas</option>
-          <option value="360">360 / MECDI</option>
-          <option value="meipa">MEIPA</option>
-        </select>
-        {/* Modelo */}
-        <select value={filterMod} onChange={e => { setFilterMod(e.target.value); setPage(1) }}
-          className="text-[11px] font-bold border border-slate-200 rounded-lg px-3 py-1.5 bg-white outline-none text-slate-600">
-          <option value="todos">Todos los modelos</option>
-          {modelos.map(m => <option key={m} value={m}>{m.charAt(0).toUpperCase()+m.slice(1)}</option>)}
-        </select>
+        {/* Sistema — solo en vista general */}
+        {!context && (
+          <select value={filterSis} onChange={e => { setFilterSis(e.target.value); setPage(1) }}
+            className="text-[11px] font-bold border border-slate-200 rounded-lg px-3 py-1.5 bg-white outline-none text-slate-600">
+            <option value="todos">Todos los sistemas</option>
+            <option value="360">360 / MECDI</option>
+            <option value="meipa">MEIPA</option>
+          </select>
+        )}
+        {/* Modelo — solo en vista general */}
+        {!context && (
+          <select value={filterMod} onChange={e => { setFilterMod(e.target.value); setPage(1) }}
+            className="text-[11px] font-bold border border-slate-200 rounded-lg px-3 py-1.5 bg-white outline-none text-slate-600">
+            <option value="todos">Todos los modelos</option>
+            {modelos.map(m => <option key={m} value={m}>{m.charAt(0).toUpperCase()+m.slice(1)}</option>)}
+          </select>
+        )}
         {/* Sort */}
         <select value={sortBy} onChange={e => setSortBy(e.target.value as any)}
           className="text-[11px] font-bold border border-slate-200 rounded-lg px-3 py-1.5 bg-white outline-none text-slate-600">
@@ -1229,13 +1250,22 @@ function TodosDocentesPanel({ docentes }: { docentes: any[] }) {
         </select>
       </div>
 
-      {/* Table header */}
-      <div className="hidden lg:grid px-5 py-2 border-b border-slate-100 bg-slate-50/40 text-[9px] font-black uppercase tracking-widest text-slate-400"
-        style={{ gridTemplateColumns:'2.5rem 1fr 7rem 8rem 5rem 6rem 1fr' }}>
-        <span>#</span><span>Docente</span><span>Sistema</span><span>Modelo</span>
-        <span className="text-right">Puntaje</span><span className="text-center">Nivel</span>
-        <span>Variables</span>
-      </div>
+      {/* Table header — ocultar Sistema/Modelo en vista de modelo específico */}
+      {context ? (
+        <div className="hidden lg:grid px-5 py-2 border-b border-slate-100 bg-slate-50/40 text-[9px] font-black uppercase tracking-widest text-slate-400"
+          style={{ gridTemplateColumns:'2.5rem 1fr 5rem 6rem 1fr' }}>
+          <span>#</span><span>Docente</span>
+          <span className="text-right">Puntaje</span><span className="text-center">Nivel</span>
+          <span>Variables</span>
+        </div>
+      ) : (
+        <div className="hidden lg:grid px-5 py-2 border-b border-slate-100 bg-slate-50/40 text-[9px] font-black uppercase tracking-widest text-slate-400"
+          style={{ gridTemplateColumns:'2.5rem 1fr 7rem 8rem 5rem 6rem 1fr' }}>
+          <span>#</span><span>Docente</span><span>Sistema</span><span>Modelo</span>
+          <span className="text-right">Puntaje</span><span className="text-center">Nivel</span>
+          <span>Variables</span>
+        </div>
+      )}
 
       {/* Rows */}
       <div className="divide-y divide-slate-50">
@@ -1251,25 +1281,35 @@ function TodosDocentesPanel({ docentes }: { docentes: any[] }) {
           return (
             <div key={rowKey}>
               <button
-                onClick={() => setExpanded(isExp ? null : rowKey)}
+                onClick={() => handleExpand(rowKey, d.cedula)}
                 className="w-full text-left hover:bg-slate-50/80 transition-colors"
               >
                 {/* Desktop grid */}
                 <div className="hidden lg:grid px-5 py-3 items-center gap-2"
-                  style={{ gridTemplateColumns:'2.5rem 1fr 7rem 8rem 5rem 6rem 1fr' }}>
+                  style={{ gridTemplateColumns: context ? '2.5rem 1fr 5rem 6rem 1fr' : '2.5rem 1fr 7rem 8rem 5rem 6rem 1fr' }}>
                   <span className="text-[11px] font-black text-slate-400 tabular-nums">{i + 1}</span>
                   <div className="min-w-0">
                     <p className="text-[11px] font-bold text-slate-800 truncate uppercase">{d.nombre}</p>
                     <p className="text-[9px] text-slate-400 truncate">{d.cedula} {d.facultad ? `· ${d.facultad}` : ''}</p>
+                    {d.fecha_ingreso && (
+                      <p className="text-[8px] text-slate-400 mt-0.5">
+                        Ingreso: {new Date(d.fecha_ingreso + 'T00:00:00').toLocaleDateString('es-EC', { day:'2-digit', month:'short', year:'numeric' })}
+                      </p>
+                    )}
                   </div>
-                  <span className="text-[9px] font-black px-2 py-0.5 rounded-full"
-                    style={{ background:`${sisC}15`, color:sisC }}>
-                    {d.sistema === 'meipa' ? 'MEIPA' : '360/MECDI'}
-                  </span>
-                  <span className="text-[9px] font-bold px-2 py-0.5 rounded border"
-                    style={{ background:`${modC}10`, color:modC, borderColor:`${modC}30` }}>
-                    {d.modelo.charAt(0).toUpperCase()+d.modelo.slice(1)}
-                  </span>
+                  {/* Sistema y Modelo solo en vista general */}
+                  {!context && (
+                    <span className="text-[9px] font-black px-2 py-0.5 rounded-full"
+                      style={{ background:`${sisC}15`, color:sisC }}>
+                      {d.sistema === 'meipa' ? 'MEIPA' : '360/MECDI'}
+                    </span>
+                  )}
+                  {!context && (
+                    <span className="text-[9px] font-bold px-2 py-0.5 rounded border"
+                      style={{ background:`${modC}10`, color:modC, borderColor:`${modC}30` }}>
+                      {d.modelo.charAt(0).toUpperCase()+d.modelo.slice(1)}
+                    </span>
+                  )}
                   <span className="text-[14px] font-black tabular-nums text-right"
                     style={{ color: pctColor(d.puntaje) }}>{d.puntaje}</span>
                   <span className="text-[9px] font-black px-1.5 py-0.5 rounded text-center border"
@@ -1315,11 +1355,11 @@ function TodosDocentesPanel({ docentes }: { docentes: any[] }) {
 
               {/* Expanded detail */}
               {isExp && (
-                <div className="px-5 pb-4 bg-slate-50/60 border-t border-slate-100">
-                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest pt-3 mb-3">
-                    Desglose de Variables — {d.modelo.charAt(0).toUpperCase()+d.modelo.slice(1)} · {d.sistema === 'meipa' ? 'MEIPA' : '360/MECDI'}
+                <div className="px-5 pb-5 bg-slate-50/60 border-t border-slate-100">
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest pt-3 mb-2">
+                    Componentes del Modelo — {d.modelo.charAt(0).toUpperCase()+d.modelo.slice(1)} · {d.sistema === 'meipa' ? 'MEIPA' : '360/MECDI'}
                   </p>
-                  <div className="space-y-2">
+                  <div className="space-y-2 mb-4">
                     {(d.componentes || []).map((c: any, ci: number) => {
                       const col = pctColor(c.pct)
                       const isBest  = ci === 0
@@ -1342,18 +1382,78 @@ function TodosDocentesPanel({ docentes }: { docentes: any[] }) {
                       )
                     })}
                   </div>
-                  {best && worst && d.componentes.length > 1 && (
-                    <div className="flex gap-3 mt-3 pt-3 border-t border-slate-200">
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-2 h-2 rounded-full bg-emerald-500" />
-                        <span className="text-[9px] text-slate-500">Mejor: <strong>{best.label}</strong> ({best.pct}%)</span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-2 h-2 rounded-full bg-red-400" />
-                        <span className="text-[9px] text-slate-500">Peor: <strong>{worst.label}</strong> ({worst.pct}%)</span>
-                      </div>
+
+                  {loadingComp === d.cedula ? (
+                    <div className="flex items-center gap-2 py-3 text-slate-400">
+                      <RefreshCw size={11} className="animate-spin" />
+                      <span className="text-[10px]">Cargando competencias…</span>
                     </div>
-                  )}
+                  ) : (() => {
+                    const comp = competencias[d.cedula]
+                    if (!comp) return null
+                    const all360   = comp['360']   || []
+                    const allMeipa = comp['meipa'] || []
+                    const grupos360: Record<string, any[]> = {}
+                    for (const c of all360) {
+                      const gk = `${c.periodo} · ${c.instrumento}`
+                      if (!grupos360[gk]) grupos360[gk] = []
+                      grupos360[gk].push(c)
+                    }
+                    const gruposMeipa: Record<string, any[]> = {}
+                    for (const c of allMeipa) {
+                      if (!gruposMeipa[c.periodo]) gruposMeipa[c.periodo] = []
+                      gruposMeipa[c.periodo].push(c)
+                    }
+                    const hasAny = all360.length > 0 || allMeipa.length > 0
+                    if (!hasAny) return (
+                      <p className="text-[9px] text-slate-400 italic">Sin datos de competencias por pregunta disponibles.</p>
+                    )
+                    return (
+                      <div>
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-3 border-t border-slate-200 pt-3">
+                          Competencias por Pregunta
+                        </p>
+                        {Object.entries(grupos360).map(([gk, items]) => {
+                          const sorted = [...items].sort((a, b) => b.pct - a.pct)
+                          return (
+                            <div key={gk} className="mb-4">
+                              <p className="text-[9px] font-black text-[#0056b3] mb-1.5 uppercase tracking-wider">{gk}</p>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1.5">
+                                {sorted.map((c: any, ci: number) => (
+                                  <div key={ci} className="flex items-center gap-2">
+                                    <span className="text-[9px] text-slate-600 flex-1 min-w-0 truncate">{c.competencia}</span>
+                                    <div className="w-16 h-1.5 rounded-full bg-slate-200 overflow-hidden flex-shrink-0">
+                                      <div className="h-full rounded-full" style={{ width:`${c.pct}%`, background:pctColor(c.pct) }} />
+                                    </div>
+                                    <span className="text-[9px] font-black w-8 text-right flex-shrink-0" style={{ color:pctColor(c.pct) }}>{c.pct}%</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )
+                        })}
+                        {Object.entries(gruposMeipa).map(([periodo, items]) => {
+                          const sorted = [...items].sort((a, b) => b.pct - a.pct)
+                          return (
+                            <div key={periodo} className="mb-4">
+                              <p className="text-[9px] font-black text-[#6d28d9] mb-1.5 uppercase tracking-wider">MEIPA · {periodo}</p>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1.5">
+                                {sorted.map((c: any, ci: number) => (
+                                  <div key={ci} className="flex items-center gap-2">
+                                    <span className="text-[9px] text-slate-600 flex-1 min-w-0 truncate">{c.competencia}</span>
+                                    <div className="w-16 h-1.5 rounded-full bg-slate-200 overflow-hidden flex-shrink-0">
+                                      <div className="h-full rounded-full" style={{ width:`${c.pct}%`, background:pctColor(c.pct) }} />
+                                    </div>
+                                    <span className="text-[9px] font-black w-8 text-right flex-shrink-0" style={{ color:pctColor(c.pct) }}>{c.pct}%</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )
+                  })()}
                 </div>
               )}
             </div>
@@ -1411,12 +1511,17 @@ function SidebarItem({ icon, label, active, collapsed, onClick, accentColor, bad
   )
 }
 
+const PERIODO_TO_ANIO: Record<string, number> = {
+  '202301': 2023, '202302': 2023, '202401': 2024,
+  '202402': 2024, '202501': 2025, '202502': 2025,
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // Main App
 // ══════════════════════════════════════════════════════════════════════════════
 export default function App() {
-  // Sistema selector: 'overview' | 'meipa' | '360'
-  const [sistema, setSistema]         = useState<'overview'|'meipa'|'360'>('overview')
+  // Sistema selector: 'overview' | 'meipa' | '360' | 'salud'
+  const [sistema, setSistema]         = useState<'overview'|'meipa'|'360'|'salud'>('overview')
   const [activeTab, setActiveTab]     = useState('docencia')  // for 360 sub-model
   const [activeAnio, setActiveAnio]   = useState<number | undefined>(undefined)
 
@@ -1432,6 +1537,11 @@ export default function App() {
   const [processing, setProcessing]   = useState(false)
   const [searchTerm, setSearchTerm]   = useState('')
   const [splashVisible, setSplashVisible] = useState(true)
+
+  // ── Períodos v2 ────────────────────────────────────────────────────────────
+  const [periodos, setPeriodos]           = useState<any[]>([])
+  const [periodoActivo, setPeriodoActivo] = useState<string>('')  // '202502' etc.
+  const [pdfLoading, setPdfLoading]       = useState<string | null>(null) // cedula en descarga
   const [splashFading, setSplashFading]   = useState(false)
 
   useEffect(() => {
@@ -1440,10 +1550,34 @@ export default function App() {
     return () => { clearTimeout(t1); clearTimeout(t2) }
   }, [])
 
-  // Determine query params from state
+  // Cargar períodos al montar
+  useEffect(() => {
+    api.getPeriodos().then(res => {
+      const cargados = res.data.filter((p: any) => p.cargado)
+      setPeriodos(res.data)
+      if (cargados.length > 0) {
+        setPeriodoActivo(cargados[cargados.length - 1].codigo) // último período cargado
+      }
+    }).catch(() => {})
+  }, [])
+
+  const handleDescargarPDF = async (cedula: string) => {
+    if (pdfLoading) return
+    setPdfLoading(cedula)
+    try {
+      await api.descargarReportePDF(cedula, periodoActivo || undefined)
+    } catch (e) {
+      alert('Error al generar el PDF. Intenta de nuevo.')
+    } finally {
+      setPdfLoading(null)
+    }
+  }
+
+  // Determine query params from state — activeAnio is the single source of truth for year filter
   const getQueryParams = useCallback(() => {
-    if (sistema === 'overview') return { modelo: undefined, anio: activeAnio, sistemaParam: undefined }
-    if (sistema === 'meipa')    return { modelo: 'docencia',   anio: activeAnio, sistemaParam: 'meipa' }
+    if (sistema === 'overview') return { modelo: undefined,  anio: activeAnio, sistemaParam: undefined }
+    if (sistema === 'meipa')    return { modelo: 'docencia', anio: activeAnio, sistemaParam: 'meipa'  }
+    if (sistema === 'salud')    return { modelo: 'abp',      anio: activeAnio, sistemaParam: '360'    }
     return { modelo: activeTab, anio: activeAnio, sistemaParam: '360' }
   }, [sistema, activeTab, activeAnio])
 
@@ -1457,23 +1591,25 @@ export default function App() {
       if (sistema === 'overview') {
         const [compRes, todosRes] = await Promise.all([
           api.getComparativo(anio),
-          api.getTodosDocentes(anio),
+          api.getTodosDocentes(anio, undefined, undefined),
         ])
         setComparativo(compRes.data)
         setTodosDocentes(Array.isArray(todosRes.data) ? todosRes.data : [])
       } else {
-        const [kpiRes, rankRes, demoRes, tendRes, analyticsRes] = await Promise.all([
+        const [kpiRes, rankRes, demoRes, tendRes, analyticsRes, todosRes] = await Promise.all([
           api.getKPIs(modelo, anio, sistemaParam),
           api.getRanking(1000, modelo, anio, sistemaParam),
           api.getDemograficos(modelo, anio, sistemaParam),
           api.getTendencias(modelo, sistemaParam),
           api.getAnalytics(sistemaParam, modelo, anio),
+          api.getTodosDocentes(anio, modelo, sistemaParam),
         ])
         setKpis(kpiRes.data)
         setRanking(rankRes.data)
         setDemograficos(demoRes.data)
         setTendencias(tendRes.data)
         setAnalytics(analyticsRes.data)
+        setTodosDocentes(Array.isArray(todosRes.data) ? todosRes.data : [])
       }
     } catch (err) {
       console.error(err)
@@ -1484,7 +1620,7 @@ export default function App() {
 
   useEffect(() => { fetchData() }, [fetchData])
 
-  const handleSistemaChange = (s: 'overview'|'meipa'|'360') => {
+  const handleSistemaChange = (s: 'overview'|'meipa'|'360'|'salud') => {
     setSistema(s)
     setSearchTerm('')
     setAiAnalysis('')
@@ -1523,10 +1659,13 @@ export default function App() {
   // Which tab config to use for displays
   const currentTabCfg = sistema === 'meipa'
     ? { id:'meipa', label:'MEIPA — Docencia', icon:UserCheck, color:'#6366f1', desc:'Het.40 · Auto.20 · Coord.20 · Par.20' }
-    : (TABS_360.find(t => t.id === activeTab) || TABS_360[0])
+    : sistema === 'salud'
+      ? { id:'abp', label:'Salud — Docencia (ABP)', icon:Heart, color:'#dc2626', desc:'Het.Est.50 · Par.20 · CEV.10 · Auto.20' }
+      : (TABS_360.find(t => t.id === activeTab) || TABS_360[0])
 
-  const compLabels = TAB_COMP_LABELS[sistema === 'meipa' ? 'meipa' : activeTab] || TAB_COMP_LABELS['docencia']
-  const compKeys   = TAB_COMP_KEYS[sistema === 'meipa' ? 'meipa' : activeTab]   || TAB_COMP_KEYS['docencia']
+  const _tabKey = sistema === 'meipa' ? 'meipa' : sistema === 'salud' ? 'abp' : activeTab
+  const compLabels = TAB_COMP_LABELS[_tabKey] || TAB_COMP_LABELS['docencia']
+  const compKeys   = TAB_COMP_KEYS[_tabKey]   || TAB_COMP_KEYS['docencia']
   const componentes= kpis?.componentes || {}
   const distNivel  = kpis?.distribucion_nivel || {}
   const aniosDisp  = kpis?.anios_disponibles ?? comparativo?.anios_disponibles ?? [2023, 2024, 2025]
@@ -1536,8 +1675,10 @@ export default function App() {
     return c ? c.promedio : 0
   })
 
-  const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [expanded360, setExpanded360] = useState(true)
+  const [sidebarOpen, setSidebarOpen]     = useState(true)
+  const [expandedMEIPA, setExpandedMEIPA] = useState(true)
+  const [expanded360, setExpanded360]     = useState(true)
+  const [expandedSalud, setExpandedSalud] = useState(true)
 
   const SIDEBAR_W = sidebarOpen ? 268 : 68
 
@@ -1591,83 +1732,283 @@ export default function App() {
             )}
           </div>
 
-          {/* Nav section label */}
-          <nav className="flex-1 overflow-y-auto py-4 px-3" style={{ gap: 2, display:'flex', flexDirection:'column' }}>
-            {sidebarOpen && (
-              <p className="text-[9px] font-black uppercase px-2 pb-2" style={{ color:'rgba(255,255,255,0.25)', letterSpacing:'0.22em' }}>
-                Sistema
-              </p>
-            )}
+          {/* Nav */}
+          <nav className="flex-1 overflow-y-auto py-3 px-2.5" style={{ display:'flex', flexDirection:'column', gap: 2 }}>
 
-            {/* Vista General */}
-            <SidebarItem
-              icon={<LayoutDashboard size={17} />}
-              label="Vista General"
-              active={sistema === 'overview'}
-              collapsed={!sidebarOpen}
-              onClick={() => handleSistemaChange('overview')}
-              accentColor={SIDEBAR_ACT}
-            />
-
-            {/* MEIPA */}
-            <SidebarItem
-              icon={<UserCheck size={17} />}
-              label="MEIPA"
-              active={sistema === 'meipa'}
-              collapsed={!sidebarOpen}
-              onClick={() => handleSistemaChange('meipa')}
-              accentColor={SIDEBAR_ACT}
-              badge="2023-24"
-            />
-
-            {/* 360 / MECDI header */}
+            {/* ── Vista General ── */}
             <button
-              onClick={() => { setExpanded360(v => !v); if (sistema !== '360') handleSistemaChange('360') }}
-              className="w-full flex items-center gap-3 text-left transition-all"
+              onClick={() => { handleSistemaChange('overview'); setPeriodoActivo(''); setActiveAnio(undefined) }}
+              className="w-full flex items-center gap-3 text-left transition-all rounded-xl"
               style={{
-                padding: '9px 10px 9px 14px',
-                color: sistema === '360' ? '#fff' : 'rgba(255,255,255,0.58)',
-                background: sistema === '360' ? 'rgba(255,255,255,0.08)' : 'transparent',
-                borderRadius: 4,
-                borderLeft: sistema === '360' ? '2px solid rgba(77,166,232,0.9)' : '2px solid transparent',
+                padding: sidebarOpen ? '10px 12px' : '10px',
+                justifyContent: sidebarOpen ? 'flex-start' : 'center',
+                color: sistema === 'overview' ? '#fff' : 'rgba(255,255,255,0.5)',
+                background: sistema === 'overview' ? 'linear-gradient(135deg,rgba(26,127,193,0.35),rgba(26,127,193,0.15))' : 'transparent',
+                borderLeft: sistema === 'overview' ? '2px solid #4da6e8' : '2px solid transparent',
               }}
             >
-              <span className="flex-shrink-0"><BarChart3 size={17} /></span>
+              <LayoutDashboard size={17} style={{ flexShrink: 0 }} />
+              {sidebarOpen && <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: '-0.01em' }}>Vista General</span>}
+            </button>
+
+            {sidebarOpen && <div style={{ height: 1, background:'rgba(255,255,255,0.06)', margin:'6px 4px' }} />}
+
+            {/* ── MEIPA ── */}
+            <button
+              onClick={() => { setExpandedMEIPA(v => !v); if (sistema !== 'meipa') { handleSistemaChange('meipa'); setPeriodoActivo(''); setActiveAnio(undefined) } }}
+              className="w-full flex items-center gap-3 text-left transition-all rounded-xl"
+              style={{
+                padding: sidebarOpen ? '10px 12px' : '10px',
+                justifyContent: sidebarOpen ? 'flex-start' : 'center',
+                color: sistema === 'meipa' ? '#fff' : 'rgba(255,255,255,0.55)',
+                background: sistema === 'meipa' ? 'linear-gradient(135deg,rgba(99,102,241,0.3),rgba(99,102,241,0.12))' : 'transparent',
+                borderLeft: sistema === 'meipa' ? '2px solid #818cf8' : '2px solid transparent',
+              }}
+            >
+              <UserCheck size={17} style={{ flexShrink:0, color: sistema === 'meipa' ? '#a5b4fc' : 'inherit' }} />
               {sidebarOpen && <>
-                <span className="font-bold flex-1 truncate" style={{ fontSize: 13 }}>360 / MECDI</span>
-                <span style={{ color:'rgba(255,255,255,0.35)' }}>
-                  {expanded360 ? <ChevronDown size={14}/> : <ChevronRight size={14}/>}
+                <div className="flex-1 min-w-0">
+                  <div style={{ fontSize:13, fontWeight:700, letterSpacing:'-0.01em' }}>MEIPA</div>
+                  <div style={{ fontSize:9, color:'rgba(255,255,255,0.35)', fontWeight:600, letterSpacing:'0.1em' }}>2023 – 2024</div>
+                </div>
+                <span style={{ color:'rgba(255,255,255,0.3)' }}>
+                  {expandedMEIPA ? <ChevronDown size={13}/> : <ChevronRight size={13}/>}
+                </span>
+              </>}
+            </button>
+
+            {/* MEIPA sub-items */}
+            {sidebarOpen && expandedMEIPA && (
+              <div style={{ marginLeft:12, paddingLeft:10, borderLeft:'1px solid rgba(99,102,241,0.25)', display:'flex', flexDirection:'column', gap:1 }}>
+                {/* Vista General MEIPA */}
+                <button
+                  onClick={() => { handleSistemaChange('meipa'); setPeriodoActivo(''); setActiveAnio(undefined) }}
+                  className="w-full flex items-center gap-2 text-left rounded-lg transition-all"
+                  style={{
+                    padding:'6px 10px',
+                    color: sistema === 'meipa' && !periodoActivo ? '#c7d2fe' : 'rgba(255,255,255,0.4)',
+                    background: sistema === 'meipa' && !periodoActivo ? 'rgba(99,102,241,0.15)' : 'transparent',
+                    fontSize: 11.5, fontWeight: sistema === 'meipa' && !periodoActivo ? 600 : 400,
+                  }}
+                >
+                  <LayoutDashboard size={11} style={{ flexShrink:0, opacity:0.7 }}/>
+                  <span>Vista General</span>
+                </button>
+                {/* Period items MEIPA */}
+                {[
+                  { codigo:'202301', label:'I Período 2023' },
+                  { codigo:'202302', label:'II Período 2023' },
+                  { codigo:'202401', label:'I Período 2024' },
+                ].map(p => {
+                  const apiP  = periodos.find((x: any) => x.codigo === p.codigo)
+                  const loaded = apiP ? apiP.cargado : false
+                  const active = sistema === 'meipa' && periodoActivo === p.codigo
+                  return (
+                    <button key={p.codigo}
+                      onClick={() => { handleSistemaChange('meipa'); setPeriodoActivo(p.codigo); setActiveAnio(PERIODO_TO_ANIO[p.codigo]) }}
+                      className="w-full flex items-center gap-2 text-left rounded-lg transition-all"
+                      style={{
+                        padding:'6px 10px',
+                        color: active ? '#e0e7ff' : loaded ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.2)',
+                        background: active ? 'rgba(99,102,241,0.2)' : 'transparent',
+                        fontSize: 11.5, fontWeight: active ? 600 : 400,
+                        cursor: loaded ? 'pointer' : 'default',
+                      }}
+                    >
+                      <span style={{ width:6, height:6, borderRadius:'50%', flexShrink:0, background: active ? '#818cf8' : loaded ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.07)' }} />
+                      <span className="flex-1 truncate">{p.label}</span>
+                      {!loaded && <span style={{ fontSize:9, color:'rgba(255,255,255,0.18)', fontStyle:'italic' }}>sin datos</span>}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+
+            {sidebarOpen && <div style={{ height:1, background:'rgba(255,255,255,0.06)', margin:'6px 4px' }} />}
+
+            {/* ── 360 / MECDI ── */}
+            <button
+              onClick={() => { setExpanded360(v => !v); if (sistema !== '360') { handleSistemaChange('360'); setActiveTab('docencia'); setPeriodoActivo(''); setActiveAnio(undefined) } }}
+              className="w-full flex items-center gap-3 text-left transition-all rounded-xl"
+              style={{
+                padding: sidebarOpen ? '10px 12px' : '10px',
+                justifyContent: sidebarOpen ? 'flex-start' : 'center',
+                color: sistema === '360' ? '#fff' : 'rgba(255,255,255,0.55)',
+                background: sistema === '360' ? 'linear-gradient(135deg,rgba(6,182,212,0.28),rgba(6,182,212,0.1))' : 'transparent',
+                borderLeft: sistema === '360' ? '2px solid #22d3ee' : '2px solid transparent',
+              }}
+            >
+              <BarChart3 size={17} style={{ flexShrink:0, color: sistema === '360' ? '#67e8f9' : 'inherit' }} />
+              {sidebarOpen && <>
+                <div className="flex-1 min-w-0">
+                  <div style={{ fontSize:13, fontWeight:700, letterSpacing:'-0.01em' }}>360 / MECDI</div>
+                  <div style={{ fontSize:9, color:'rgba(255,255,255,0.35)', fontWeight:600, letterSpacing:'0.1em' }}>2024 – 2025</div>
+                </div>
+                <span style={{ color:'rgba(255,255,255,0.3)' }}>
+                  {expanded360 ? <ChevronDown size={13}/> : <ChevronRight size={13}/>}
                 </span>
               </>}
             </button>
 
             {/* 360 sub-items */}
             {sidebarOpen && expanded360 && (
-              <div className="mt-0.5 mb-1" style={{ marginLeft: 10, paddingLeft: 10, borderLeft: '1px solid rgba(255,255,255,0.1)' }}>
-                {TABS_360.map(tab => {
-                  const Icon = tab.icon
-                  const active = sistema === '360' && activeTab === tab.id
+              <div style={{ marginLeft:12, paddingLeft:10, borderLeft:'1px solid rgba(6,182,212,0.2)', display:'flex', flexDirection:'column', gap:1 }}>
+                {/* Vista General 360 */}
+                <button
+                  onClick={() => { handleSistemaChange('360'); setActiveTab('docencia'); setPeriodoActivo(''); setActiveAnio(undefined) }}
+                  className="w-full flex items-center gap-2 text-left rounded-lg transition-all"
+                  style={{
+                    padding:'6px 10px',
+                    color: sistema === '360' && !periodoActivo ? '#a5f3fc' : 'rgba(255,255,255,0.4)',
+                    background: sistema === '360' && !periodoActivo ? 'rgba(6,182,212,0.12)' : 'transparent',
+                    fontSize: 11.5, fontWeight: sistema === '360' && !periodoActivo ? 600 : 400,
+                  }}
+                >
+                  <LayoutDashboard size={11} style={{ flexShrink:0, opacity:0.7 }}/>
+                  <span>Vista General</span>
+                </button>
+                {/* Period items 360 */}
+                {[
+                  { codigo:'202402', label:'II Período 2024' },
+                  { codigo:'202501', label:'I Período 2025' },
+                  { codigo:'202502', label:'II Período 2025' },
+                ].map(p => {
+                  const apiP  = periodos.find((x: any) => x.codigo === p.codigo)
+                  const loaded = apiP ? apiP.cargado : false
+                  const active = sistema === '360' && periodoActivo === p.codigo
                   return (
-                    <button
-                      key={tab.id}
-                      onClick={() => { handleSistemaChange('360'); handleTabChange(tab.id) }}
-                      className="w-full flex items-center gap-2.5 pr-2 py-2 text-left transition-all"
+                    <button key={p.codigo}
+                      onClick={() => { handleSistemaChange('360'); setActiveTab('docencia'); setPeriodoActivo(p.codigo); setActiveAnio(PERIODO_TO_ANIO[p.codigo]) }}
+                      className="w-full flex items-center gap-2 text-left rounded-lg transition-all"
                       style={{
-                        paddingLeft: 10,
-                        color: active ? '#fff' : 'rgba(255,255,255,0.48)',
-                        background: active ? 'rgba(255,255,255,0.07)' : 'transparent',
-                        marginBottom: 1,
-                        borderRadius: 3,
+                        padding:'6px 10px',
+                        color: active ? '#cffafe' : loaded ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.2)',
+                        background: active ? 'rgba(6,182,212,0.18)' : 'transparent',
+                        fontSize: 11.5, fontWeight: active ? 600 : 400,
+                        cursor: loaded ? 'pointer' : 'default',
                       }}
                     >
-                      <Icon size={12} style={{ color: active ? tab.color : 'rgba(255,255,255,0.3)', flexShrink:0 }} />
-                      <span className="truncate" style={{ fontSize: 12, fontWeight: active ? 600 : 400 }}>{tab.label}</span>
-                      {active && <span className="ml-auto w-1 h-1 rounded-full flex-shrink-0" style={{ background: tab.color }} />}
+                      <span style={{ width:6, height:6, borderRadius:'50%', flexShrink:0, background: active ? '#22d3ee' : loaded ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.07)' }} />
+                      <span className="flex-1 truncate">{p.label}</span>
+                      {!loaded && <span style={{ fontSize:9, color:'rgba(255,255,255,0.18)', fontStyle:'italic' }}>sin datos</span>}
                     </button>
                   )
                 })}
+                {/* Model tabs (no ABP) */}
+                <div style={{ marginTop:4, paddingTop:4, borderTop:'1px solid rgba(255,255,255,0.06)' }}>
+                  {TABS_360.filter(t => t.id !== 'abp' && t.id !== 'tecnologado').map(tab => {
+                    const Icon = tab.icon
+                    const active = sistema === '360' && activeTab === tab.id
+                    return (
+                      <button key={tab.id}
+                        onClick={() => { handleSistemaChange('360'); handleTabChange(tab.id) }}
+                        className="w-full flex items-center gap-2.5 text-left rounded-lg transition-all"
+                        style={{
+                          padding:'5px 10px',
+                          color: active ? '#fff' : 'rgba(255,255,255,0.38)',
+                          background: active ? `${tab.color}22` : 'transparent',
+                          fontSize: 11.5, fontWeight: active ? 600 : 400,
+                          marginBottom: 1,
+                        }}
+                      >
+                        <Icon size={11} style={{ color: active ? tab.color : 'rgba(255,255,255,0.25)', flexShrink:0 }} />
+                        <span className="flex-1 truncate">{tab.label}</span>
+                        {active && <span style={{ width:4, height:4, borderRadius:'50%', background:tab.color, flexShrink:0 }} />}
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
             )}
+
+            {sidebarOpen && <div style={{ height:1, background:'rgba(255,255,255,0.06)', margin:'6px 4px' }} />}
+
+            {/* ── Salud ── */}
+            <button
+              onClick={() => { setExpandedSalud(v => !v); if (sistema !== 'salud') { handleSistemaChange('salud'); setPeriodoActivo(''); setActiveAnio(undefined) } }}
+              className="w-full flex items-center gap-3 text-left transition-all rounded-xl"
+              style={{
+                padding: sidebarOpen ? '10px 12px' : '10px',
+                justifyContent: sidebarOpen ? 'flex-start' : 'center',
+                color: sistema === 'salud' ? '#fff' : 'rgba(255,255,255,0.55)',
+                background: sistema === 'salud' ? 'linear-gradient(135deg,rgba(220,38,38,0.28),rgba(220,38,38,0.1))' : 'transparent',
+                borderLeft: sistema === 'salud' ? '2px solid #f87171' : '2px solid transparent',
+              }}
+            >
+              <Heart size={17} style={{ flexShrink:0, color: sistema === 'salud' ? '#fca5a5' : 'inherit' }} />
+              {sidebarOpen && <>
+                <div className="flex-1 min-w-0">
+                  <div style={{ fontSize:13, fontWeight:700, letterSpacing:'-0.01em' }}>Salud</div>
+                  <div style={{ fontSize:9, color:'rgba(255,255,255,0.35)', fontWeight:600, letterSpacing:'0.1em' }}>ABP / Medicina</div>
+                </div>
+                <span style={{ color:'rgba(255,255,255,0.3)' }}>
+                  {expandedSalud ? <ChevronDown size={13}/> : <ChevronRight size={13}/>}
+                </span>
+              </>}
+            </button>
+
+            {/* Salud sub-items */}
+            {sidebarOpen && expandedSalud && (
+              <div style={{ marginLeft:12, paddingLeft:10, borderLeft:'1px solid rgba(220,38,38,0.2)', display:'flex', flexDirection:'column', gap:1 }}>
+                <button
+                  onClick={() => { handleSistemaChange('salud'); setPeriodoActivo(''); setActiveAnio(undefined) }}
+                  className="w-full flex items-center gap-2 text-left rounded-lg transition-all"
+                  style={{
+                    padding:'6px 10px',
+                    color: sistema === 'salud' && !periodoActivo ? '#fecaca' : 'rgba(255,255,255,0.4)',
+                    background: sistema === 'salud' && !periodoActivo ? 'rgba(220,38,38,0.12)' : 'transparent',
+                    fontSize: 11.5, fontWeight: sistema === 'salud' && !periodoActivo ? 600 : 400,
+                  }}
+                >
+                  <LayoutDashboard size={11} style={{ flexShrink:0, opacity:0.7 }}/>
+                  <span>Vista General</span>
+                </button>
+                {[
+                  { codigo:'202402', label:'II Período 2024' },
+                  { codigo:'202501', label:'I Período 2025' },
+                  { codigo:'202502', label:'II Período 2025' },
+                ].map(p => {
+                  const apiP  = periodos.find((x: any) => x.codigo === p.codigo)
+                  const loaded = apiP ? apiP.cargado : false
+                  const active = sistema === 'salud' && periodoActivo === p.codigo
+                  return (
+                    <button key={p.codigo}
+                      onClick={() => { handleSistemaChange('salud'); setPeriodoActivo(p.codigo); setActiveAnio(PERIODO_TO_ANIO[p.codigo]) }}
+                      className="w-full flex items-center gap-2 text-left rounded-lg transition-all"
+                      style={{
+                        padding:'6px 10px',
+                        color: active ? '#fee2e2' : loaded ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.2)',
+                        background: active ? 'rgba(220,38,38,0.18)' : 'transparent',
+                        fontSize: 11.5, fontWeight: active ? 600 : 400,
+                        cursor: loaded ? 'pointer' : 'default',
+                      }}
+                    >
+                      <span style={{ width:6, height:6, borderRadius:'50%', flexShrink:0, background: active ? '#f87171' : loaded ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.07)' }} />
+                      <span className="flex-1 truncate">{p.label}</span>
+                      {!loaded && <span style={{ fontSize:9, color:'rgba(255,255,255,0.18)', fontStyle:'italic' }}>sin datos</span>}
+                    </button>
+                  )
+                })}
+                {/* ABP shown as Docencia */}
+                <div style={{ marginTop:4, paddingTop:4, borderTop:'1px solid rgba(255,255,255,0.06)' }}>
+                  <button
+                    onClick={() => handleSistemaChange('salud')}
+                    className="w-full flex items-center gap-2.5 text-left rounded-lg transition-all"
+                    style={{
+                      padding:'5px 10px',
+                      color: sistema === 'salud' ? '#fff' : 'rgba(255,255,255,0.38)',
+                      background: sistema === 'salud' ? 'rgba(220,38,38,0.2)' : 'transparent',
+                      fontSize: 11.5, fontWeight: sistema === 'salud' ? 600 : 400,
+                    }}
+                  >
+                    <GraduationCap size={11} style={{ color: sistema === 'salud' ? '#fca5a5' : 'rgba(255,255,255,0.25)', flexShrink:0 }} />
+                    <span>Docencia (ABP)</span>
+                    {sistema === 'salud' && <span style={{ width:4, height:4, borderRadius:'50%', background:'#f87171', flexShrink:0, marginLeft:'auto' }} />}
+                  </button>
+                </div>
+              </div>
+            )}
+
           </nav>
 
           {/* Bottom: toggle collapse */}
@@ -1694,14 +2035,33 @@ export default function App() {
             <div className="flex items-center gap-3">
               <div>
                 <span className="text-slate-800 font-black" style={{ fontSize: 14 }}>
-                  {sistema === 'overview' ? 'Vista General' : sistema === 'meipa' ? 'MEIPA — Evaluación Docente' : `360 / MECDI — ${currentTabCfg.label}`}
+                  {sistema === 'overview' ? 'Vista General' : sistema === 'meipa' ? 'MEIPA — Evaluación Docente' : sistema === 'salud' ? 'Salud — Docencia ABP' : `360 / MECDI — ${currentTabCfg.label}`}
                 </span>
               </div>
               {loading && <div className="w-4 h-4 rounded-full border-2 border-slate-200 border-t-[#1a7fc1] animate-spin" />}
             </div>
 
             <div className="flex items-center gap-3">
-              {/* Year */}
+              {/* Selector de Período (v2) */}
+              {periodos.length > 0 && (
+                <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5">
+                  <FileText size={12} className="text-slate-400" />
+                  <select
+                    className="text-xs font-bold text-slate-600 bg-transparent outline-none cursor-pointer"
+                    value={periodoActivo}
+                    onChange={e => setPeriodoActivo(e.target.value)}
+                  >
+                    <option value="">Todos los períodos</option>
+                    {periodos.map((p: any) => (
+                      <option key={p.codigo} value={p.codigo} disabled={!p.cargado}>
+                        {p.label} {p.cargado ? '' : '(sin datos)'}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Year (legacy) */}
               <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5">
                 <Calendar size={12} className="text-slate-400" />
                 <select
@@ -2036,6 +2396,7 @@ export default function App() {
                               ))}
                               <th className="px-3 py-3 text-center font-black text-slate-600">Total/100</th>
                               <th className="px-3 py-3 text-center">Nivel</th>
+                              <th className="px-3 py-3 text-center">PDF</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -2046,7 +2407,12 @@ export default function App() {
                                 </td>
                                 <td className="px-4 py-3">
                                   <div className="font-bold text-slate-700 text-xs uppercase leading-tight group-hover:text-[#0056b3] transition-colors truncate max-w-[140px]">{doc.nombre}</div>
-                                  <div className="text-[10px] text-slate-400 font-medium mt-0.5">{doc.anio || doc.periodo}</div>
+                                  <div className="text-[10px] text-slate-400 font-medium mt-0.5">{doc.cedula || doc.anio || doc.periodo}</div>
+                                  {doc.fecha_ingreso && (
+                                    <div className="text-[9px] text-slate-400 mt-0.5">
+                                      Ingreso: {new Date(doc.fecha_ingreso + 'T00:00:00').toLocaleDateString('es-EC', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                    </div>
+                                  )}
                                 </td>
                                 <td className="px-3 py-3 hidden md:table-cell">
                                   <span className="text-[10px] font-semibold text-slate-500 bg-slate-50 border border-slate-100 px-2 py-0.5 rounded-lg truncate block max-w-[110px]">{doc.facultad}</span>
@@ -2070,6 +2436,29 @@ export default function App() {
                                 <td className="px-3 py-3 text-center">
                                   <NivelBadge nivel={doc.nivel || ''} />
                                 </td>
+                                <td className="px-3 py-3 text-center">
+                                  {doc.cedula ? (
+                                    <button
+                                      onClick={() => handleDescargarPDF(doc.cedula)}
+                                      disabled={pdfLoading === doc.cedula}
+                                      title="Descargar reporte PDF individual"
+                                      className="inline-flex items-center justify-center gap-1 text-[9px] font-black px-2 py-1.5 rounded-lg border transition-all"
+                                      style={{
+                                        background: pdfLoading === doc.cedula ? '#f1f5f9' : '#eff6ff',
+                                        borderColor: '#bfdbfe',
+                                        color: pdfLoading === doc.cedula ? '#94a3b8' : '#0056b3',
+                                        cursor: pdfLoading === doc.cedula ? 'not-allowed' : 'pointer',
+                                      }}
+                                    >
+                                      {pdfLoading === doc.cedula
+                                        ? <RefreshCw size={10} className="animate-spin" />
+                                        : <Download size={10} />
+                                      }
+                                    </button>
+                                  ) : (
+                                    <span className="text-slate-200">—</span>
+                                  )}
+                                </td>
                               </tr>
                             ))}
                           </tbody>
@@ -2084,6 +2473,22 @@ export default function App() {
                   </div>
                 </>
               )}
+
+              {/* Todos los Docentes — filtrado por modelo/periodo de esta sección */}
+              {todosDocentes.length > 0 && (() => {
+                const tabLabel = sistema === 'meipa' ? 'MEIPA · Docencia'
+                  : sistema === 'salud' ? 'Salud / ABP · 360/MECDI'
+                  : `${activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} · 360/MECDI`
+                const { modelo, sistemaParam } = getQueryParams()
+                return (
+                  <div className="mt-6">
+                    <TodosDocentesPanel
+                      docentes={todosDocentes}
+                      context={{ modelo: modelo || '', sistema: sistemaParam || '', label: tabLabel }}
+                    />
+                  </div>
+                )
+              })()}
             </>
           )}
 

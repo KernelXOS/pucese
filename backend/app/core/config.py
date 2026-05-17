@@ -12,6 +12,6 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7 # 1 week
 
     class Config:
-        env_file = ".env"
+        env_file = ".env.local" if __import__('os').path.exists(".env.local") else ".env"
 
 settings = Settings()

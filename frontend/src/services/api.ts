@@ -1,56 +1,91 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1/evaluacion';
+// VITE_API_URL puede venir con o sin /evaluacion al final — normalizamos
+const _RAW = (import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1').replace(/\/+$/, '')
+const BASE = _RAW.endsWith('/evaluacion') ? _RAW.slice(0, -'/evaluacion'.length) : _RAW
+const EVAL = `${BASE}/evaluacion`;
+const DOC  = `${BASE}/docentes`;
+const ETL  = `${BASE}/etl`;
 
-function params(opts: {
-  modelo?: string;
-  anio?: number;
-  sistema?: string;
-  limit?: number;
-  threshold?: number;
-}) {
+function params(opts: Record<string, string | number | undefined>) {
   const p: Record<string, string> = {};
-  if (opts.modelo)    p['modelo']    = opts.modelo;
-  if (opts.anio)      p['anio']      = String(opts.anio);
-  if (opts.sistema)   p['sistema']   = opts.sistema;
-  if (opts.limit)     p['limit']     = String(opts.limit);
-  if (opts.threshold) p['threshold'] = String(opts.threshold);
+  for (const [k, v] of Object.entries(opts)) {
+    if (v !== undefined && v !== null && v !== '') p[k] = String(v);
+  }
   return new URLSearchParams(p).toString();
 }
 
 export const api = {
+  // ── Legacy (compatibilidad con dashboard actual) ───────────────────────────
   getKPIs: (modelo?: string, anio?: number, sistema?: string) =>
-    axios.get(`${API_BASE_URL}/kpis/institucionales?${params({ modelo, anio, sistema })}`),
+    axios.get(`${EVAL}/kpis/institucionales?${params({ modelo, anio, sistema })}`),
 
   getRanking: (limit = 1000, modelo?: string, anio?: number, sistema?: string) =>
-    axios.get(`${API_BASE_URL}/ranking?${params({ limit, modelo, anio, sistema })}`),
+    axios.get(`${EVAL}/ranking?${params({ limit, modelo, anio, sistema })}`),
 
   getCriticos: (threshold = 3.5, modelo?: string, anio?: number, sistema?: string) =>
-    axios.get(`${API_BASE_URL}/criticos?${params({ threshold, modelo, anio, sistema })}`),
+    axios.get(`${EVAL}/criticos?${params({ threshold, modelo, anio, sistema })}`),
 
   getTendencias: (modelo?: string, sistema?: string) =>
-    axios.get(`${API_BASE_URL}/tendencias?${params({ modelo, sistema })}`),
+    axios.get(`${EVAL}/tendencias?${params({ modelo, sistema })}`),
 
   getVariables: (modelo?: string, anio?: number, sistema?: string) =>
-    axios.get(`${API_BASE_URL}/variables?${params({ modelo, anio, sistema })}`),
+    axios.get(`${EVAL}/variables?${params({ modelo, anio, sistema })}`),
 
   getDemograficos: (modelo?: string, anio?: number, sistema?: string) =>
-    axios.get(`${API_BASE_URL}/demograficos?${params({ modelo, anio, sistema })}`),
+    axios.get(`${EVAL}/demograficos?${params({ modelo, anio, sistema })}`),
 
   getAIAnalysis: (modelo?: string, anio?: number, sistema?: string) =>
-    axios.get(`${API_BASE_URL}/analisis-ia?${params({ modelo, anio, sistema })}`),
+    axios.get(`${EVAL}/analisis-ia?${params({ modelo, anio, sistema })}`),
 
   getAnalytics: (sistema?: string, modelo?: string, anio?: number) =>
-    axios.get(`${API_BASE_URL}/analytics?${params({ sistema, modelo, anio })}`),
+    axios.get(`${EVAL}/analytics?${params({ sistema, modelo, anio })}`),
 
   getComparativo: (anio?: number) =>
-    axios.get(`${API_BASE_URL}/comparativo?${params({ anio })}`),
+    axios.get(`${EVAL}/comparativo?${params({ anio })}`),
 
-  getTodosDocentes: (anio?: number) =>
-    axios.get(`${API_BASE_URL}/todos-docentes?${params({ anio })}`),
+  getTodosDocentes: (anio?: number, modelo?: string, sistema?: string) =>
+    axios.get(`${EVAL}/todos-docentes?${params({ anio, modelo, sistema })}`),
 
-  processETL: () => axios.post(`${API_BASE_URL}/etl/process`),
+  processETL: () => axios.post(`${EVAL}/etl/process`),
 
   consultaIA: (pregunta: string, anio?: number) =>
-    axios.post(`${API_BASE_URL}/consulta-ia`, { pregunta, anio }),
+    axios.post(`${EVAL}/consulta-ia`, { pregunta, anio }),
+
+  // ── Nuevos: períodos ────────────────────────────────────────────────────────
+  getPeriodos: () =>
+    axios.get(`${ETL}/periodos`),
+
+  getEstadoETL: () =>
+    axios.get(`${ETL}/estado`),
+
+  procesarPeriodo: (periodo: string) =>
+    axios.post(`${ETL}/procesar-periodo/${periodo}`),
+
+  // ── Nuevos: docentes ────────────────────────────────────────────────────────
+  getDocentes: (opts: { periodo?: string; facultad?: string; modelo?: string; q?: string; limit?: number }) =>
+    axios.get(`${DOC}/?${params(opts)}`),
+
+  getPerfilDocente: (cedula: string) =>
+    axios.get(`${DOC}/${cedula}/perfil`),
+
+  getCompetenciasDocente: (cedula: string) =>
+    axios.get(`${EVAL}/competencias/${cedula}`),
+
+  /** Descarga el PDF del docente. Retorna Blob. */
+  descargarReportePDF: async (cedula: string, periodo?: string): Promise<void> => {
+    const url = `${DOC}/${cedula}/reporte.pdf${periodo ? `?periodo=${periodo}` : ''}`;
+    const resp = await axios.get(url, { responseType: 'blob' });
+    const blob = new Blob([resp.data], { type: 'application/pdf' });
+    const href = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = href;
+    a.download = resp.headers['content-disposition']
+      ?.split('filename="')[1]?.replace('"', '')
+      || `Reporte_${cedula}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(href);
+  },
 };

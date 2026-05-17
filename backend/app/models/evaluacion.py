@@ -1,8 +1,6 @@
 from sqlalchemy import Column, Integer, String, Float, Text, DateTime
-from sqlalchemy.ext.declarative import declarative_base
 from datetime import datetime
-
-Base = declarative_base()
+from app.models.base import Base
 
 class Evaluacion(Base):
     __tablename__ = "evaluaciones"

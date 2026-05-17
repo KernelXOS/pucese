@@ -1389,6 +1389,7 @@ function TodosDocentesPanel({ docentes, context }: { docentes: any[]; context?: 
   const [competencias, setCompetencias] = useState<Record<string, any>>({})
   const [loadingComp, setLoadingComp]   = useState<string | null>(null)
   const [generatingPDF, setGeneratingPDF] = useState(false)
+  const [downloadingPdf, setDownloadingPdf] = useState<string | null>(null)
   const PAGE = 40
 
   const handleExpand = useCallback(async (rowKey: string, cedula: string) => {
@@ -1403,6 +1404,29 @@ function TodosDocentesPanel({ docentes, context }: { docentes: any[]; context?: 
       finally { setLoadingComp(null) }
     }
   }, [expanded, competencias])
+
+  const downloadDocente = async (cedula: string, nombre: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (downloadingPdf) return
+    setDownloadingPdf(cedula)
+    try {
+      const _rawUrl = (import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1').replace(/\/+$/, '')
+      const _baseUrl = _rawUrl.endsWith('/evaluacion') ? _rawUrl.slice(0, -'/evaluacion'.length) : _rawUrl
+      const res = await fetch(`${_baseUrl}/docentes/${cedula}/reporte.pdf`)
+      if (!res.ok) throw new Error(`Error ${res.status}`)
+      const blob = await res.blob()
+      const url  = URL.createObjectURL(blob)
+      const a    = document.createElement('a')
+      a.href     = url
+      a.download = `Reporte_${nombre.split(' ').slice(0,2).join('_')}_${cedula}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch(e) {
+      console.error('Error descargando PDF:', e)
+      alert('No se pudo generar el reporte PDF.')
+    }
+    setDownloadingPdf(null)
+  }
 
   // ── Report helpers ───────────────────────────────────────────────────────
   const generateCSV = () => {
@@ -1605,14 +1629,27 @@ function TodosDocentesPanel({ docentes, context }: { docentes: any[]; context?: 
                 <div className="hidden lg:grid px-5 py-3 items-center gap-2"
                   style={{ gridTemplateColumns: context ? '2.5rem 1fr 5rem 6rem 1fr' : '2.5rem 1fr 7rem 8rem 5rem 6rem 1fr' }}>
                   <span className="text-[11px] font-black text-slate-400 tabular-nums">{i + 1}</span>
-                  <div className="min-w-0">
-                    <p className="text-[11px] font-bold text-slate-800 truncate uppercase">{d.nombre}</p>
-                    <p className="text-[9px] text-slate-400 truncate">{d.cedula} {d.facultad ? `· ${d.facultad}` : ''}</p>
-                    {d.fecha_ingreso && (
-                      <p className="text-[8px] text-slate-400 mt-0.5">
-                        Ingreso: {new Date(d.fecha_ingreso + 'T00:00:00').toLocaleDateString('es-EC', { day:'2-digit', month:'short', year:'numeric' })}
-                      </p>
-                    )}
+                  <div className="min-w-0 flex items-start gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[11px] font-bold text-slate-800 truncate uppercase">{d.nombre}</p>
+                      <p className="text-[9px] text-slate-400 truncate">{d.cedula} {d.facultad ? `· ${d.facultad}` : ''}</p>
+                      {d.fecha_ingreso && (
+                        <p className="text-[8px] text-slate-400 mt-0.5">
+                          Ingreso: {new Date(d.fecha_ingreso + 'T00:00:00').toLocaleDateString('es-EC', { day:'2-digit', month:'short', year:'numeric' })}
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      onClick={(e) => downloadDocente(d.cedula, d.nombre, e)}
+                      disabled={downloadingPdf === d.cedula}
+                      title="Descargar reporte PDF individual"
+                      className="flex-shrink-0 p-1 rounded hover:bg-blue-50 transition-colors group"
+                    >
+                      {downloadingPdf === d.cedula
+                        ? <Loader2 size={13} className="animate-spin text-blue-400" />
+                        : <FileText size={13} className="text-slate-300 group-hover:text-blue-500 transition-colors" />
+                      }
+                    </button>
                   </div>
                   {/* Sistema y Modelo solo en vista general */}
                   {!context && (
@@ -1650,7 +1687,20 @@ function TodosDocentesPanel({ docentes, context }: { docentes: any[]; context?: 
                 <div className="lg:hidden px-4 py-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
-                      <p className="text-[11px] font-bold text-slate-800 truncate uppercase">{d.nombre}</p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-[11px] font-bold text-slate-800 truncate uppercase flex-1">{d.nombre}</p>
+                        <button
+                          onClick={(e) => downloadDocente(d.cedula, d.nombre, e)}
+                          disabled={downloadingPdf === d.cedula}
+                          title="Descargar reporte PDF"
+                          className="flex-shrink-0 p-1 rounded hover:bg-blue-50 transition-colors"
+                        >
+                          {downloadingPdf === d.cedula
+                            ? <Loader2 size={12} className="animate-spin text-blue-400" />
+                            : <FileText size={12} className="text-slate-300 hover:text-blue-500 transition-colors" />
+                          }
+                        </button>
+                      </div>
                       <p className="text-[9px] text-slate-400 truncate">{d.cedula}</p>
                       <div className="flex gap-1 mt-1">
                         <span className="text-[8px] font-black px-1.5 py-0.5 rounded-full"

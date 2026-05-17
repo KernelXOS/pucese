@@ -239,6 +239,57 @@ class KPIService:
                     .order_by(Evaluacion.anio).all()
             return [{'anio': r[0], 'promedio': round(r[1], 2) if r[1] else None} for r in rows]
 
+        def trend_periodos(sistema):
+            """Tendencia agrupada por período (ej: 2023-I, 2023-II, 2024-I…)."""
+            q = db.query(Evaluacion)
+            if sistema:
+                q = q.filter(Evaluacion.sistema == sistema)
+            if anio:
+                q = q.filter(Evaluacion.anio == anio)
+            rows = q.with_entities(
+                Evaluacion.periodo,
+                Evaluacion.anio,
+                func.avg(Evaluacion.puntaje_100),
+                func.count(Evaluacion.id),
+            ).filter(
+                Evaluacion.periodo != None,
+                Evaluacion.anio    != None,
+            ).group_by(Evaluacion.periodo, Evaluacion.anio)\
+             .order_by(Evaluacion.anio, Evaluacion.periodo).all()
+            return [
+                {'periodo': r[0], 'anio': r[1],
+                 'promedio': round(r[2], 2) if r[2] else None,
+                 'n': r[3]}
+                for r in rows
+            ]
+
+        def por_modelo_por_periodo_360():
+            """Promedio por (modelo, período) para el gráfico de barras agrupado."""
+            modelos = ['docencia','abp','posgrado','tecnologado','vinculacion','gestion','investigacion']
+            result = {}
+            for m in modelos:
+                q = db.query(Evaluacion).filter(
+                    Evaluacion.sistema == '360',
+                    Evaluacion.modelo  == m,
+                )
+                if anio:
+                    q = q.filter(Evaluacion.anio == anio)
+                rows = q.with_entities(
+                    Evaluacion.periodo,
+                    Evaluacion.anio,
+                    func.avg(Evaluacion.puntaje_100),
+                    func.count(Evaluacion.id),
+                ).filter(Evaluacion.periodo != None, Evaluacion.anio != None)\
+                 .group_by(Evaluacion.periodo, Evaluacion.anio)\
+                 .order_by(Evaluacion.anio, Evaluacion.periodo).all()
+                result[m] = [
+                    {'periodo': r[0], 'anio': r[1],
+                     'promedio': round(r[2], 2) if r[2] else None,
+                     'n': r[3]}
+                    for r in rows
+                ]
+            return result
+
         # ── Base query (all records, optional year filter) ────────────────────
         q_all = db.query(Evaluacion)
         if anio:
@@ -518,6 +569,9 @@ class KPIService:
             'por_modelo_360':     por_modelo_360,
             'tendencia_meipa':    trend('meipa'),
             'tendencia_360':      trend('360'),
+            'tendencia_periodos_meipa': trend_periodos('meipa'),
+            'tendencia_periodos_360':  trend_periodos('360'),
+            'por_modelo_por_periodo':  por_modelo_por_periodo_360(),
             'por_facultad':       por_facultad,
             'por_genero':         por_genero,
             'por_edad':           por_edad,

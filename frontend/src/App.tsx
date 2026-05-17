@@ -528,6 +528,9 @@ function ComparativoPanel({ comparativo }: { comparativo: any }) {
   const porModelo: Record<string, any> = comparativo.por_modelo_360 || {}
   const tendMeipa: any[]  = comparativo.tendencia_meipa || []
   const tend360:   any[]  = comparativo.tendencia_360   || []
+  const tendPeriodosMeipa: any[] = comparativo.tendencia_periodos_meipa || []
+  const tendPeriodos360:   any[] = comparativo.tendencia_periodos_360   || []
+  const porModeloPeriodo: Record<string, any[]> = comparativo.por_modelo_por_periodo || {}
   const porFacultad: any[] = comparativo.por_facultad   || []
   const porGenero: Record<string, number> = comparativo.por_genero || {}
   const porEdad: Record<string, number|null> = comparativo.por_edad || {}
@@ -612,13 +615,64 @@ function ComparativoPanel({ comparativo }: { comparativo: any }) {
         </div>
       </div>
 
-      {/* ── Row 2: Modelos 360 + Tendencia 360 ───────────────────────────── */}
+      {/* ── Row 2: Modelos 360 por período + Tendencia 360 por período ──── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
-        {Object.keys(porModelo).length > 0 && (() => {
+        {(() => {
+          // Gráfico de barras agrupado: modelo × período
+          const MODELOS = ['docencia','abp','posgrado','tecnologado','vinculacion','gestion','investigacion']
+          const MODELO_LABELS: Record<string,string> = {
+            docencia:'Docencia', abp:'Salud/ABP', posgrado:'Posgrado',
+            tecnologado:'Tecnologado', vinculacion:'Vinculación',
+            gestion:'Gestión', investigacion:'Investigación',
+          }
           const MC = ['#0f5ca8','#b91c1c','#047857','#b45309','#6d28d9','#0e7490','#7c2d12']
+          // Recopilar todos los períodos disponibles
+          const allPeriodos = Array.from(new Set(
+            MODELOS.flatMap(m => (porModeloPeriodo[m] || []).map((d:any) => d.periodo))
+          )).sort()
+
+          if (allPeriodos.length > 0) {
+            // Una barra por modelo, agrupadas por período
+            const traces = MODELOS.map((m, i) => {
+              const data = porModeloPeriodo[m] || []
+              return {
+                type: 'bar' as const,
+                name: MODELO_LABELS[m],
+                x: data.map((d:any) => d.periodo),
+                y: data.map((d:any) => +(d.promedio ?? 0)),
+                marker: { color: MC[i], opacity: 0.88 },
+                text: data.map((d:any) => d.promedio ? (+d.promedio).toFixed(1) : ''),
+                textposition: 'outside' as const,
+                textfont: { family:'Inter', size:8, color: MC[i] },
+                hovertemplate: `<b>${MODELO_LABELS[m]}</b><br>%{x}<br>%{y:.1f}/100<extra></extra>`,
+              }
+            })
+            const layout = {
+              autosize:true, paper_bgcolor:'white', plot_bgcolor:'white',
+              barmode: 'group' as const,
+              font:{ family:'Inter', size:9, color:'#64748b' },
+              margin:{ t:28, b:70, l:46, r:16 },
+              xaxis:{
+                type:'category' as const,
+                tickfont:{ family:'Inter', size:10, color:'#1e293b' },
+                showgrid:false, zeroline:false, showline:true, linecolor:'#e2e8f0',
+              },
+              yaxis:{ gridcolor:'#f0f4f8', range:[0,110], tickfont:{ family:'Inter', size:9, color:'#94a3b8' }, showgrid:true, zeroline:false, nticks:6 },
+              showlegend:true,
+              legend:{ orientation:'h' as const, y:-0.25, font:{ size:8, family:'Inter' } },
+              shapes:[{ type:'line', x0:0, x1:1, xref:'paper', y0:90, y1:90, line:{ color:'#10b981', width:1.5, dash:'dot' } }],
+              annotations:[{ x:1, y:90, xref:'paper', yref:'y', text:'Meta 90', showarrow:false, font:{ size:9, color:'#10b981', family:'Inter' }, xanchor:'right', yanchor:'bottom', yshift:4 }],
+            }
+            return (
+              <ChartCard title="Puntaje por Modelo 360" sub="Por período — Modelos MECDI">
+                <Plot data={traces} layout={layout} config={{responsive:true,displayModeBar:false}} style={{width:'100%',height:'300px'}} />
+              </ChartCard>
+            )
+          }
+          // Fallback: barras simples agregadas
           const filteredModelo = Object.entries(porModelo).filter(([k]) => k !== 'administrativo')
-          const mL = filteredModelo.map(([m]) => m.charAt(0).toUpperCase()+m.slice(1))
+          const mL = filteredModelo.map(([m]) => MODELO_LABELS[m] || m.charAt(0).toUpperCase()+m.slice(1))
           const mV = filteredModelo.map(([,v]:any) => +(v.promedio??0))
           const ch = excel3DBar(mL, mV, MC.slice(0,mL.length), { tickAngle: mL.length>5?-28:0, marginB: mL.length>5?85:55 })
           return (
@@ -628,78 +682,72 @@ function ComparativoPanel({ comparativo }: { comparativo: any }) {
           )
         })()}
 
-        {tend360.length > 0 && (() => {
-          const vals360 = tend360.map((t:any)=>+t.promedio)
-          const yrs360 = [...tend360.map((t:any)=>String(t.anio))].sort()
-          const yMin = Math.max(0, Math.floor(Math.min(...vals360)) - 4)
-          const yMax = Math.ceil(Math.max(...vals360)) + 5
-          const layout360 = {
-            autosize:true, paper_bgcolor:'white', plot_bgcolor:'white',
-            font:{ family:'Inter', size:9, color:'#64748b' },
-            margin:{ t:28, b:55, l:46, r:16 },
-            xaxis:{
-              type:'category' as const, categoryorder:'array' as const, categoryarray: yrs360,
-              tickfont:{ family:'Inter', size:12, color:'#1e293b' },
-              showgrid:false, zeroline:false, showline:true, linecolor:'#e2e8f0',
-            },
-            yaxis:{ gridcolor:'#f0f4f8', range:[yMin, yMax], tickfont:{ family:'Inter', size:9, color:'#94a3b8' }, showgrid:true, zeroline:false, nticks:6 },
-            showlegend:false,
-            shapes:[{ type:'line', x0:0, x1:1, xref:'paper', y0:90, y1:90, line:{ color:'#10b981', width:1.5, dash:'dot' } }],
-            annotations:[{ x:1, y:90, xref:'paper', yref:'y', text:'Meta 90', showarrow:false, font:{ size:9, color:'#10b981', family:'Inter' }, xanchor:'right', yanchor:'bottom', yshift:4 }],
-          }
+        {(() => {
+          const src = tendPeriodos360.length > 0 ? tendPeriodos360 : tend360.map((t:any)=>({...t, periodo: String(t.anio)}))
+          const vals = src.map((t:any) => +(t.promedio ?? 0))
+          const labels = src.map((t:any) => t.periodo ?? String(t.anio))
+          const yMin = Math.max(0, Math.floor(Math.min(...vals)) - 4)
+          const yMax = Math.ceil(Math.max(...vals)) + 5
           return (
-            <ChartCard title="Tendencia 360 / MECDI" sub="Evolución por año">
+            <ChartCard title="Tendencia 360 / MECDI" sub="Evolución por período">
               <Plot data={[{
                 type:'scatter', mode:'lines+markers+text',
-                x: tend360.map((t:any)=>String(t.anio)),
-                y: vals360,
+                x: labels,
+                y: vals,
                 line:{ color:'#0f5ca8', width:3, shape:'spline', smoothing:0.6 },
                 marker:{ size:10, color:'white', symbol:'circle', line:{ color:'#0f5ca8', width:2.5 } },
-                text: vals360.map((v:number)=>v.toFixed(1)),
+                text: vals.map((v:number)=>v.toFixed(1)),
                 textposition:'top center',
                 textfont:{ family:'Inter', size:10, color:'#0f5ca8' },
                 hovertemplate:'<b>360/MECDI</b> · %{x}<br>%{y:.2f} / 100<extra></extra>',
-              }]} layout={layout360} config={{responsive:true,displayModeBar:false}} style={{width:'100%',height:'280px'}} />
+              }]} layout={{
+                autosize:true, paper_bgcolor:'white', plot_bgcolor:'white',
+                font:{ family:'Inter', size:9, color:'#64748b' },
+                margin:{ t:28, b:55, l:46, r:16 },
+                xaxis:{ type:'category' as const, categoryorder:'array' as const, categoryarray: labels,
+                  tickfont:{ family:'Inter', size:11, color:'#1e293b' }, showgrid:false, zeroline:false, showline:true, linecolor:'#e2e8f0' },
+                yaxis:{ gridcolor:'#f0f4f8', range:[yMin, yMax], tickfont:{ family:'Inter', size:9, color:'#94a3b8' }, showgrid:true, zeroline:false, nticks:6 },
+                showlegend:false,
+                shapes:[{ type:'line', x0:0, x1:1, xref:'paper', y0:90, y1:90, line:{ color:'#10b981', width:1.5, dash:'dot' } }],
+                annotations:[{ x:1, y:90, xref:'paper', yref:'y', text:'Meta 90', showarrow:false, font:{ size:9, color:'#10b981', family:'Inter' }, xanchor:'right', yanchor:'bottom', yshift:4 }],
+              }} config={{responsive:true,displayModeBar:false}} style={{width:'100%',height:'300px'}} />
             </ChartCard>
           )
         })()}
       </div>
 
-      {/* ── Row 3: Tendencia MEIPA + Estadísticas descriptivas ────────────── */}
+      {/* ── Row 3: Tendencia MEIPA por período + Estadísticas ────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
-        {tendMeipa.length > 0 && (() => {
-          const valsMeipa = tendMeipa.map((t:any)=>+t.promedio)
-          const yrsMeipa = [...tendMeipa.map((t:any)=>String(t.anio))].sort()
-          const yMin = Math.max(0, Math.floor(Math.min(...valsMeipa)) - 4)
-          const yMax = Math.ceil(Math.max(...valsMeipa)) + 5
-          const layoutMeipa = {
-            autosize:true, paper_bgcolor:'white', plot_bgcolor:'white',
-            font:{ family:'Inter', size:9, color:'#64748b' },
-            margin:{ t:28, b:55, l:46, r:16 },
-            xaxis:{
-              type:'category' as const, categoryorder:'array' as const, categoryarray: yrsMeipa,
-              tickfont:{ family:'Inter', size:12, color:'#1e293b' },
-              showgrid:false, zeroline:false, showline:true, linecolor:'#e2e8f0',
-            },
-            yaxis:{ gridcolor:'#f0f4f8', range:[yMin, yMax], tickfont:{ family:'Inter', size:9, color:'#94a3b8' }, showgrid:true, zeroline:false, nticks:6 },
-            showlegend:false,
-            shapes:[{ type:'line', x0:0, x1:1, xref:'paper', y0:90, y1:90, line:{ color:'#10b981', width:1.5, dash:'dot' } }],
-            annotations:[{ x:1, y:90, xref:'paper', yref:'y', text:'Meta 90', showarrow:false, font:{ size:9, color:'#10b981', family:'Inter' }, xanchor:'right', yanchor:'bottom', yshift:4 }],
-          }
+        {(() => {
+          const src = tendPeriodosMeipa.length > 0 ? tendPeriodosMeipa : tendMeipa.map((t:any)=>({...t, periodo: String(t.anio)}))
+          const vals = src.map((t:any) => +(t.promedio ?? 0))
+          const labels = src.map((t:any) => t.periodo ?? String(t.anio))
+          const yMin = Math.max(0, Math.floor(Math.min(...vals)) - 4)
+          const yMax = Math.ceil(Math.max(...vals)) + 5
           return (
-            <ChartCard title="Tendencia MEIPA" sub="Evolución por año">
+            <ChartCard title="Tendencia MEIPA" sub="Evolución por período">
               <Plot data={[{
                 type:'scatter', mode:'lines+markers+text',
-                x: tendMeipa.map((t:any)=>String(t.anio)),
-                y: valsMeipa,
+                x: labels,
+                y: vals,
                 line:{ color:'#6d28d9', width:3, shape:'spline', smoothing:0.6, dash:'dash' },
                 marker:{ size:10, color:'white', symbol:'diamond', line:{ color:'#6d28d9', width:2.5 } },
-                text: valsMeipa.map((v:number)=>v.toFixed(1)),
+                text: vals.map((v:number)=>v.toFixed(1)),
                 textposition:'top center',
                 textfont:{ family:'Inter', size:10, color:'#6d28d9' },
                 hovertemplate:'<b>MEIPA</b> · %{x}<br>%{y:.2f} / 100<extra></extra>',
-              }]} layout={layoutMeipa} config={{responsive:true,displayModeBar:false}} style={{width:'100%',height:'280px'}} />
+              }]} layout={{
+                autosize:true, paper_bgcolor:'white', plot_bgcolor:'white',
+                font:{ family:'Inter', size:9, color:'#64748b' },
+                margin:{ t:28, b:55, l:46, r:16 },
+                xaxis:{ type:'category' as const, categoryorder:'array' as const, categoryarray: labels,
+                  tickfont:{ family:'Inter', size:11, color:'#1e293b' }, showgrid:false, zeroline:false, showline:true, linecolor:'#e2e8f0' },
+                yaxis:{ gridcolor:'#f0f4f8', range:[yMin, yMax], tickfont:{ family:'Inter', size:9, color:'#94a3b8' }, showgrid:true, zeroline:false, nticks:6 },
+                showlegend:false,
+                shapes:[{ type:'line', x0:0, x1:1, xref:'paper', y0:90, y1:90, line:{ color:'#10b981', width:1.5, dash:'dot' } }],
+                annotations:[{ x:1, y:90, xref:'paper', yref:'y', text:'Meta 90', showarrow:false, font:{ size:9, color:'#10b981', family:'Inter' }, xanchor:'right', yanchor:'bottom', yshift:4 }],
+              }} config={{responsive:true,displayModeBar:false}} style={{width:'100%',height:'300px'}} />
             </ChartCard>
           )
         })()}

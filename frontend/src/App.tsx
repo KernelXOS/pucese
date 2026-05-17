@@ -2538,22 +2538,6 @@ export default function App() {
                 />
               </div>
 
-              {/* Export PDF — current view */}
-              <button
-                onClick={sistema === 'overview' ? exportComparativoPDF2 : exportVistaPDF}
-                disabled={sistema === 'overview' ? exportingComp : exportingVista}
-                title="Exportar vista actual como PDF"
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white disabled:opacity-60 transition-all"
-                style={{ background:'linear-gradient(135deg,#059669,#047857)', boxShadow:'0 2px 8px rgba(5,150,105,0.3)' }}
-              >
-                {(sistema === 'overview' ? exportingComp : exportingVista)
-                  ? <Loader2 size={12} className="animate-spin" />
-                  : <Download size={12} />}
-                <span className="hidden lg:inline">
-                  {(sistema === 'overview' ? exportingComp : exportingVista) ? 'Exportando…' : 'Exportar PDF'}
-                </span>
-              </button>
-
               {/* Update */}
               <button onClick={runETL} disabled={processing}
                 className="flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold text-white disabled:opacity-60 transition-all"
@@ -2562,15 +2546,28 @@ export default function App() {
                 {processing ? 'Actualizando…' : 'Actualizar'}
               </button>
 
-              {/* Topbar icons (decorative, matching SIGA style) */}
-              <div className="flex items-center gap-1 pl-2 border-l border-slate-200">
+              {/* Topbar icons */}
+              <div className="flex items-center gap-2 pl-2 border-l border-slate-200">
                 <button className="p-2 rounded-lg hover:bg-slate-100 text-slate-500 transition-colors relative">
                   <Bell size={16} />
+                </button>
+                <button
+                  onClick={sistema === 'overview' ? exportComparativoPDF2 : exportVistaPDF}
+                  disabled={sistema === 'overview' ? exportingComp : exportingVista}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold text-white transition-all disabled:opacity-60"
+                  style={{ background:'#059669' }}
+                >
+                  {(sistema === 'overview' ? exportingComp : exportingVista)
+                    ? <Loader2 size={13} className="animate-spin" />
+                    : <Download size={13} />}
+                  <span>
+                    {(sistema === 'overview' ? exportingComp : exportingVista) ? 'Exportando…' : 'Exportar'}
+                  </span>
                 </button>
                 <button className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold text-white transition-all"
                   style={{ background:'#e53e3e' }}>
                   <LogOut size={13} />
-                  <span className="hidden lg:inline">Cerrar sesión</span>
+                  <span>Cerrar sesión</span>
                 </button>
               </div>
             </div>

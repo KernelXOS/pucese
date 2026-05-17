@@ -1636,9 +1636,8 @@ export default function App() {
   const runETL = async () => {
     try {
       setProcessing(true)
-      await api.processETL()
       await fetchData()
-    } catch { alert('Error procesando archivos') }
+    } catch { alert('Error actualizando datos') }
     setProcessing(false)
   }
 

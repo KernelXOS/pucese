@@ -31,6 +31,27 @@ with engine.connect() as _conn:
         except Exception:
             pass  # columna ya existe
 
+# Normalizar códigos de período heredados del ETL legacy → etiquetas legibles
+_PERIOD_NORM = [
+    ("2023-I",  ("202361", "202301")),
+    ("2023-II", ("202366", "202302")),
+    ("2024-I",  ("202461", "202401")),
+    ("2024-II", ("202402", "202456", "202466")),
+    ("2025-I",  ("202501",)),
+    ("2025-II", ("202502",)),
+]
+with engine.connect() as _conn:
+    for _label, _codes in _PERIOD_NORM:
+        _ph = ",".join(f"'{c}'" for c in _codes)
+        try:
+            _conn.execute(_text(
+                f"UPDATE evaluaciones SET periodo = '{_label}' "
+                f"WHERE periodo IN ({_ph}) AND periodo != '{_label}'"
+            ))
+            _conn.commit()
+        except Exception:
+            pass
+
 app = FastAPI(title=settings.PROJECT_NAME, version="2.0.0")
 
 app.add_middleware(

@@ -6,7 +6,7 @@ import {
   FileText, Search, BookOpen, Star, CheckCircle, AlertCircle, XCircle,
   Microscope, Heart, Link2, Briefcase, GraduationCap, Calendar,
   Activity, UserCheck, Menu, Bell, LogOut, ChevronDown, ChevronRight,
-  LayoutDashboard, Building2, Cpu, Download,
+  LayoutDashboard, Building2, Cpu, Download, FileSpreadsheet, Loader2,
 } from 'lucide-react'
 
 const LOGO_URL = 'https://jorgebanet.com/puce/wp-content/uploads/2025/11/cropped-Logo_PUCESD.png'
@@ -1388,6 +1388,7 @@ function TodosDocentesPanel({ docentes, context }: { docentes: any[]; context?: 
   const [page, setPage]               = useState(1)
   const [competencias, setCompetencias] = useState<Record<string, any>>({})
   const [loadingComp, setLoadingComp]   = useState<string | null>(null)
+  const [generatingPDF, setGeneratingPDF] = useState(false)
   const PAGE = 40
 
   const handleExpand = useCallback(async (rowKey: string, cedula: string) => {
@@ -1402,6 +1403,175 @@ function TodosDocentesPanel({ docentes, context }: { docentes: any[]; context?: 
       finally { setLoadingComp(null) }
     }
   }, [expanded, competencias])
+
+  // ── Report helpers ───────────────────────────────────────────────────────
+  const _hexRgb = (hex: string): [number,number,number] => {
+    const h = hex.replace('#','')
+    return [parseInt(h.slice(0,2),16), parseInt(h.slice(2,4),16), parseInt(h.slice(4,6),16)]
+  }
+
+  const generateCSV = () => {
+    const title = context ? `Docentes — ${context.label}` : 'Todos los Docentes'
+    const headers = ['#','Nombre','Cédula','Facultad','Sistema','Modelo','Puntaje','Nivel']
+    const rows = filtered.map((d:any,i:number) => [
+      i+1, d.nombre||'', d.cedula||'', d.facultad||'',
+      (d.sistema||'').toUpperCase(), d.modelo||'',
+      (+d.puntaje).toFixed(1), d.nivel||'',
+    ])
+    const csv = [`"${title}"`, headers.map(h=>`"${h}"`).join(','),
+      ...rows.map((r:any[]) => r.map(v=>`"${v}"`).join(','))
+    ].join('\n')
+    const blob = new Blob(['﻿'+csv], { type:'text/csv;charset=utf-8;' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href = url; a.download = `reporte-docentes-${new Date().toISOString().slice(0,10)}.csv`
+    a.click(); URL.revokeObjectURL(url)
+  }
+
+  const generatePDF = async () => {
+    setGeneratingPDF(true)
+    try {
+      const { default: jsPDF } = await import('jspdf')
+      const { default: autoTable } = await import('jspdf-autotable')
+
+      const doc = new jsPDF({ orientation:'landscape', unit:'mm', format:'a4' })
+      const W = 297
+      const BLUE: [number,number,number] = [15,92,168]
+      const SLATE: [number,number,number] = [71,85,105]
+      const fecha = new Date().toLocaleDateString('es-EC',{year:'numeric',month:'long',day:'numeric'})
+      const title = context ? `Docentes — ${context.label}` : 'Todos los Docentes'
+
+      // ── Header bar ─────────────────────────────────────────────────────────
+      doc.setFillColor(...BLUE); doc.rect(0,0,W,18,'F')
+      doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(13)
+      doc.text('PUCESE — Sistema de Evaluación Docente',10,12)
+      doc.setFont('helvetica','normal'); doc.setFontSize(8)
+      doc.text(`Generado: ${fecha}`, W-10, 12, { align:'right' })
+
+      // ── Subtitle ───────────────────────────────────────────────────────────
+      doc.setTextColor(...SLATE); doc.setFont('helvetica','bold'); doc.setFontSize(11)
+      doc.text(title, 10, 26)
+      doc.setFont('helvetica','normal'); doc.setFontSize(8)
+      doc.text(`Total registros en reporte: ${filtered.length}`, 10, 32)
+
+      // ── KPI cards ──────────────────────────────────────────────────────────
+      const nivelCount: Record<string,number> = {}
+      for (const d of filtered) nivelCount[d.nivel] = (nivelCount[d.nivel]||0)+1
+      const avgP = filtered.length ? (filtered.reduce((s:number,d:any)=>s+d.puntaje,0)/filtered.length).toFixed(1) : '0'
+      const cards = [
+        { label:'Promedio', val:avgP+'/100', color:'#0f5ca8' },
+        { label:'Excelente ≥90', val:String(nivelCount['Excelente']||0), color:'#059669' },
+        { label:'Bueno 75–89',   val:String(nivelCount['Bueno']||0),     color:'#0056b3' },
+        { label:'Regular 60–74', val:String(nivelCount['Regular']||0),   color:'#d97706' },
+        { label:'Deficiente <60',val:String(nivelCount['Deficiente']||0),color:'#dc2626' },
+      ]
+      let cx = 10
+      for (const c of cards) {
+        const rgb = _hexRgb(c.color)
+        doc.setFillColor(...rgb); doc.roundedRect(cx,36,54,16,2,2,'F')
+        doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(13)
+        doc.text(c.val, cx+27, 46, {align:'center'})
+        doc.setFont('helvetica','normal'); doc.setFontSize(7)
+        doc.text(c.label, cx+27, 51, {align:'center'})
+        cx += 57
+      }
+
+      // ── Chart 1: Distribución por Nivel ────────────────────────────────────
+      const c1x=10, c1y=57, c1w=132, c1h=44
+      doc.setFillColor(248,250,252); doc.roundedRect(c1x,c1y,c1w,c1h,2,2,'F')
+      doc.setTextColor(...SLATE); doc.setFont('helvetica','bold'); doc.setFontSize(8)
+      doc.text('Distribución por Nivel de Desempeño', c1x+4, c1y+7)
+      const barData = [
+        {label:'Excelente', n:nivelCount['Excelente']||0, color:[5,150,105] as [number,number,number]},
+        {label:'Bueno',     n:nivelCount['Bueno']||0,     color:[0,86,179]  as [number,number,number]},
+        {label:'Regular',   n:nivelCount['Regular']||0,   color:[217,119,6] as [number,number,number]},
+        {label:'Deficiente',n:nivelCount['Deficiente']||0,color:[220,38,38] as [number,number,number]},
+      ]
+      const maxN = Math.max(...barData.map(b=>b.n),1)
+      const ba = {x:c1x+38, y:c1y+12, w:c1w-50, h:c1h-16}
+      const bH = (ba.h-4)/4 - 1
+      barData.forEach((b,i) => {
+        const bY = ba.y + i*(bH+2)
+        const bW = (b.n/maxN)*ba.w
+        doc.setFillColor(...b.color)
+        if(bW>0) doc.roundedRect(ba.x, bY, bW, bH, 1,1,'F')
+        else { doc.setFillColor(220,220,220); doc.roundedRect(ba.x, bY, 2, bH, 0.5,0.5,'F') }
+        doc.setTextColor(...SLATE); doc.setFont('helvetica','normal'); doc.setFontSize(7)
+        doc.text(b.label, c1x+4, bY+bH/2+2)
+        doc.setFont('helvetica','bold')
+        doc.text(String(b.n), ba.x+bW+2, bY+bH/2+2)
+      })
+
+      // ── Chart 2: Top 10 Docentes ───────────────────────────────────────────
+      const c2x=150, c2y=57, c2w=137, c2h=44
+      doc.setFillColor(248,250,252); doc.roundedRect(c2x,c2y,c2w,c2h,2,2,'F')
+      doc.setTextColor(...SLATE); doc.setFont('helvetica','bold'); doc.setFontSize(8)
+      doc.text('Top 10 — Mayor Puntaje', c2x+4, c2y+7)
+      const top10 = filtered.slice(0,10)
+      const b2a = {x:c2x+52, y:c2y+12, w:c2w-64, h:c2h-14}
+      const bH2 = (b2a.h-2)/10 - 0.8
+      top10.forEach((d:any,i:number) => {
+        const bY = b2a.y + i*(bH2+0.8)
+        const bW = (d.puntaje/100)*b2a.w
+        const rgb: [number,number,number] = d.puntaje>=90?[5,150,105]:d.puntaje>=75?[0,86,179]:[217,119,6]
+        doc.setFillColor(...rgb)
+        if(bW>0) doc.roundedRect(b2a.x, bY, bW, bH2, 0.5,0.5,'F')
+        doc.setTextColor(...SLATE); doc.setFont('helvetica','normal'); doc.setFontSize(5.5)
+        const shortName = (d.nombre||'').split(' ').slice(0,2).join(' ')
+        doc.text(shortName, c2x+3, bY+bH2/2+2, {maxWidth:47})
+        doc.setFont('helvetica','bold')
+        doc.text(d.puntaje.toFixed(1), b2a.x+bW+1.5, bY+bH2/2+2)
+      })
+
+      // ── Ranking Table ──────────────────────────────────────────────────────
+      autoTable(doc, {
+        startY: 107,
+        head:[['#','Docente','Cédula','Facultad','Sistema','Modelo','Puntaje','Nivel']],
+        body: filtered.map((d:any,i:number)=>[
+          i+1, d.nombre||'', d.cedula||'', d.facultad||'',
+          (d.sistema||'').toUpperCase(),
+          d.modelo ? d.modelo.charAt(0).toUpperCase()+d.modelo.slice(1) : '',
+          (+d.puntaje).toFixed(1), d.nivel||'',
+        ]),
+        styles:{ fontSize:7, cellPadding:1.5 },
+        headStyles:{ fillColor:BLUE, textColor:[255,255,255], fontStyle:'bold', fontSize:7.5 },
+        columnStyles:{
+          0:{cellWidth:8, halign:'center'},
+          6:{halign:'center', fontStyle:'bold'},
+          7:{halign:'center'},
+        },
+        alternateRowStyles:{ fillColor:[248,250,252] },
+        didParseCell:(data:any) => {
+          if(data.section==='body' && data.column.index===7){
+            const n = data.cell.raw as string
+            data.cell.styles.textColor = n==='Excelente'?[5,150,105]:n==='Bueno'?[0,86,179]:n==='Regular'?[217,119,6]:[220,38,38]
+            data.cell.styles.fontStyle='bold'
+          }
+          if(data.section==='body' && data.column.index===6){
+            const p = parseFloat(data.cell.raw as string)
+            data.cell.styles.textColor = p>=90?[5,150,105]:p>=75?[0,86,179]:p>=60?[217,119,6]:[220,38,38]
+          }
+        },
+        margin:{left:10,right:10},
+      })
+
+      // ── Footer on each page ────────────────────────────────────────────────
+      const totalPages = (doc as any).internal.getNumberOfPages()
+      for(let p=1; p<=totalPages; p++){
+        doc.setPage(p)
+        doc.setFillColor(248,250,252); doc.rect(0,202,W,8,'F')
+        doc.setTextColor(150,150,150); doc.setFont('helvetica','normal'); doc.setFontSize(6.5)
+        doc.text('PUCESE — Sistema de Gestión de Información Académica · Evaluación Docente', 10, 207)
+        doc.text(`Página ${p} de ${totalPages}`, W-10, 207, {align:'right'})
+      }
+
+      doc.save(`reporte-docentes-${new Date().toISOString().slice(0,10)}.pdf`)
+    } catch(e) {
+      console.error('Error generando PDF:', e)
+      alert('Error al generar el PDF. Intente de nuevo.')
+    }
+    setGeneratingPDF(false)
+  }
 
   const modelos = Array.from(new Set(docentes.map(d => d.modelo))).sort()
 
@@ -1446,6 +1616,26 @@ function TodosDocentesPanel({ docentes, context }: { docentes: any[]; context?: 
         <span className="text-[9px] font-bold px-2 py-1 rounded border border-slate-200 bg-slate-50 text-slate-500">
           {total} de {docentes.length} docentes
         </span>
+        {/* Report buttons */}
+        <button
+          onClick={generateCSV}
+          title="Descargar Excel/CSV con los datos filtrados"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all"
+          style={{ background:'#f0fdf4', color:'#059669', borderColor:'#bbf7d0' }}
+        >
+          <FileSpreadsheet size={12} />
+          Excel
+        </button>
+        <button
+          onClick={generatePDF}
+          disabled={generatingPDF}
+          title="Generar reporte PDF con gráficas y tabla completa"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all"
+          style={{ background:'#eff6ff', color:'#0056b3', borderColor:'#bfdbfe', opacity: generatingPDF ? 0.7 : 1 }}
+        >
+          {generatingPDF ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
+          {generatingPDF ? 'Generando…' : 'PDF + Gráficas'}
+        </button>
       </div>
 
       {/* Filters */}

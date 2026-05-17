@@ -126,14 +126,21 @@ async def auto_seed():
               f"{legacy_count} registros legacy")
 
         if not periodos_con_datos:
-            print("[Startup] Sin datos v2 — iniciando ETL completo...")
-            run_full_etl(db)
+            # Intentar ETL solo si hay archivos de datos disponibles
+            try:
+                run_full_etl(db)
+            except FileNotFoundError:
+                print("[Startup] Sin archivos de datos — se usaran los datos del DB.")
+            except Exception as etl_err:
+                print(f"[Startup] ETL omitido: {etl_err}")
 
-        # Migrar evaluaciones desde puntajes_finales si está vacía
+        # Migrar evaluaciones desde puntajes_finales si está vacía (siempre)
         with engine.connect() as _conn:
             _migrate_evaluaciones_from_puntajes(_conn)
 
-        for p in estado["periodos"]:
+        # Actualizar estado después de migración
+        estado2 = get_estado(db)
+        for p in estado2["periodos"]:
             status = f"{p['puntajes']} puntajes" if p["puntajes"] > 0 else "sin datos"
             print(f"  {p['codigo']} ({p['label']}): {status}")
 

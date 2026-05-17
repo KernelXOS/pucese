@@ -2538,6 +2538,22 @@ export default function App() {
                 />
               </div>
 
+              {/* Export PDF — current view */}
+              <button
+                onClick={sistema === 'overview' ? exportComparativoPDF2 : exportVistaPDF}
+                disabled={sistema === 'overview' ? exportingComp : exportingVista}
+                title="Exportar vista actual como PDF"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white disabled:opacity-60 transition-all"
+                style={{ background:'linear-gradient(135deg,#059669,#047857)', boxShadow:'0 2px 8px rgba(5,150,105,0.3)' }}
+              >
+                {(sistema === 'overview' ? exportingComp : exportingVista)
+                  ? <Loader2 size={12} className="animate-spin" />
+                  : <Download size={12} />}
+                <span className="hidden lg:inline">
+                  {(sistema === 'overview' ? exportingComp : exportingVista) ? 'Exportando…' : 'Exportar PDF'}
+                </span>
+              </button>
+
               {/* Update */}
               <button onClick={runETL} disabled={processing}
                 className="flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold text-white disabled:opacity-60 transition-all"
@@ -2572,16 +2588,6 @@ export default function App() {
                   <p className="text-[11px] text-slate-400">Análisis cruzado de ambos sistemas de evaluación docente</p>
                 </div>
                 {loading && <div className="w-4 h-4 rounded-full border-2 border-slate-200 border-t-[#1e40af] animate-spin" />}
-                <button
-                  onClick={exportComparativoPDF2}
-                  disabled={exportingComp || loading}
-                  title="Exportar esta vista completa como PDF"
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-[11px] font-bold transition-all shadow-sm"
-                  style={{ background: exportingComp ? '#94a3b8' : '#0056b3', color:'#fff', border:'none', cursor: exportingComp ? 'wait' : 'pointer' }}
-                >
-                  {exportingComp ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
-                  {exportingComp ? 'Exportando…' : 'Exportar PDF'}
-                </button>
               </div>
               <div ref={comparativoRef}>
                 <ComparativoPanel comparativo={comparativo} />
@@ -2656,16 +2662,6 @@ export default function App() {
                       </p>
                     </div>
                     {loading && <div className="w-4 h-4 rounded-full border-2 border-slate-200 border-t-[#1e40af] animate-spin" />}
-                    <button
-                      onClick={exportVistaPDF}
-                      disabled={exportingVista || loading}
-                      title="Exportar esta vista completa como PDF"
-                      className="flex items-center gap-2 px-4 py-2 rounded-lg text-[11px] font-bold transition-all shadow-sm"
-                      style={{ background: exportingVista ? '#94a3b8' : currentTabCfg.color, color:'#fff', border:'none', cursor: exportingVista ? 'wait' : 'pointer' }}
-                    >
-                      {exportingVista ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
-                      {exportingVista ? 'Exportando…' : 'Exportar PDF'}
-                    </button>
                   </div>
 
                   {/* KPI Cards */}

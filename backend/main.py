@@ -44,6 +44,65 @@ app.add_middleware(
 app.include_router(api_router, prefix="/api/v1")
 
 
+def _migrate_evaluaciones_from_puntajes(conn):
+    """Puebla la tabla evaluaciones desde puntajes_finales si está vacía."""
+    from sqlalchemy import text as _t
+    cur = conn.execute(_t("SELECT COUNT(*) FROM evaluaciones"))
+    count = cur.scalar()
+    if count and count > 0:
+        return count  # ya tiene datos
+
+    print("[Startup] Migrando puntajes_finales -> evaluaciones...")
+    conn.execute(_t("DELETE FROM evaluaciones"))
+    conn.execute(_t("""
+        INSERT INTO evaluaciones (
+            docente_nombre, facultad, periodo, sexo, edad,
+            fecha_proceso, archivo_fuente,
+            het_estudiantil, eval_pares, aula_virtual, autoevaluacion,
+            puntaje_100, carrera, nivel_desempeno, cedula,
+            modelo, anio,
+            comp_auto, comp_pares, comp_hetero_dir, comp_hetero_est,
+            sistema, antiguedad_anos, funcion_docente
+        )
+        SELECT
+            d.nombre_completo,
+            pp.facultad,
+            p.label_corto,
+            d.genero,
+            pp.edad_en_periodo,
+            CURRENT_TIMESTAMP,
+            'puntajes_finales',
+            pf.comp_het_est,
+            pf.comp_pares,
+            pf.comp_cev,
+            pf.comp_auto,
+            pf.puntaje_100,
+            pp.carrera,
+            pf.nivel_desempeno,
+            pf.cedula,
+            pf.modelo,
+            CAST(p.anio AS INTEGER),
+            pf.comp_auto,
+            pf.comp_pares,
+            pf.comp_het_dir,
+            pf.comp_het_est,
+            pf.sistema,
+            pp.antiguedad_anos,
+            pp.funcion
+        FROM puntajes_finales pf
+        LEFT JOIN docentes d ON d.cedula = pf.cedula
+        LEFT JOIN personal_periodo pp
+               ON pp.cedula = pf.cedula AND pp.periodo_codigo = pf.periodo_codigo
+        LEFT JOIN periodos p ON p.codigo = pf.periodo_codigo
+        WHERE pf.puntaje_100 IS NOT NULL
+    """))
+    conn.commit()
+    cur2 = conn.execute(_t("SELECT COUNT(*) FROM evaluaciones"))
+    inserted = cur2.scalar() or 0
+    print(f"[Startup] evaluaciones poblada: {inserted} registros")
+    return inserted
+
+
 @app.on_event("startup")
 async def auto_seed():
     """Al iniciar: seed catálogos + ETL si la BD está vacía."""
@@ -63,20 +122,24 @@ async def auto_seed():
         legacy_count = db.query(Evaluacion).count()
 
         print(f"[Startup] BD: {estado['total_docentes']} docentes, "
-              f"{len(periodos_con_datos)}/6 períodos v2, "
+              f"{len(periodos_con_datos)}/6 periodos v2, "
               f"{legacy_count} registros legacy")
 
         if not periodos_con_datos:
             print("[Startup] Sin datos v2 — iniciando ETL completo...")
             run_full_etl(db)
-        else:
-            for p in estado["periodos"]:
-                status = f"{p['puntajes']} puntajes" if p["puntajes"] > 0 else "sin datos"
-                print(f"  {p['codigo']} ({p['label']}): {status}")
+
+        # Migrar evaluaciones desde puntajes_finales si está vacía
+        with engine.connect() as _conn:
+            _migrate_evaluaciones_from_puntajes(_conn)
+
+        for p in estado["periodos"]:
+            status = f"{p['puntajes']} puntajes" if p["puntajes"] > 0 else "sin datos"
+            print(f"  {p['codigo']} ({p['label']}): {status}")
 
         db.close()
     except Exception as e:
-        print(f"[Startup] ⚠️  {e}")
+        print(f"[Startup] Advertencia: {e}")
         traceback.print_exc()
 
 

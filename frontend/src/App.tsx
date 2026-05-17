@@ -531,6 +531,9 @@ function ComparativoPanel({ comparativo }: { comparativo: any }) {
   const tendPeriodosMeipa: any[] = comparativo.tendencia_periodos_meipa || []
   const tendPeriodos360:   any[] = comparativo.tendencia_periodos_360   || []
   const porModeloPeriodo: Record<string, any[]> = comparativo.por_modelo_por_periodo || {}
+  const generoPorPeriodo: any[]  = comparativo.genero_por_periodo       || []
+  const edadPorPeriodo:   any[]  = comparativo.edad_por_periodo         || []
+  const antiguedadPorPeriodo: any[] = comparativo.antiguedad_por_periodo || []
   const porFacultad: any[] = comparativo.por_facultad   || []
   const porGenero: Record<string, number> = comparativo.por_genero || {}
   const porEdad: Record<string, number|null> = comparativo.por_edad || {}
@@ -805,56 +808,126 @@ function ComparativoPanel({ comparativo }: { comparativo: any }) {
         )
       })()}
 
-      {/* ── Row 4: Género | Edad | Antigüedad ─────────────────────────────── */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+      {/* ── Row 4: Género | Edad | Antigüedad por período ─────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
-        {/* Género */}
-        {gKeys.length > 0 && (() => {
-          const ch = excel3DBar(gKeys, gVals, gKeys.map(k=>GENDER_COLORS[k]||'#64748b'), { marginB:45 })
+        {/* Género por período */}
+        {generoPorPeriodo.length > 0 && (() => {
+          const periodos = generoPorPeriodo.map((d:any) => d.periodo)
+          const generos = ['Mujer','Hombre']
+          const traces = generos.map(g => ({
+            type: 'bar' as const,
+            name: g,
+            x: periodos,
+            y: generoPorPeriodo.map((d:any) => d[g] ?? null),
+            marker: { color: GENDER_COLORS[g] || '#94a3b8', opacity: 0.88 },
+            text: generoPorPeriodo.map((d:any) => d[g] ? (+d[g]).toFixed(1) : ''),
+            textposition: 'outside' as const,
+            textfont: { family:'Inter', size:8 },
+            hovertemplate: `<b>${g}</b><br>%{x}<br>%{y:.1f}/100<extra></extra>`,
+          }))
+          const yVals = generoPorPeriodo.flatMap((d:any) => generos.map(g => d[g] ?? 0)).filter(Boolean)
+          const yMin = Math.max(0, Math.floor(Math.min(...yVals)) - 5)
           return (
-            <ChartCard title="Desempeño por Género" sub="Comparativo global">
+            <ChartCard title="Desempeño por Género" sub="Por período">
               <div className="flex justify-center gap-6 mb-2">
                 {gKeys.map(k=>(
                   <div key={k} className="text-center">
-                    <div className="text-2xl font-black" style={{color:GENDER_COLORS[k]||'#94a3b8'}}>{porGenero[k]}</div>
-                    <div className="text-[10px] font-bold text-slate-500">{k}</div>
-                    {bestGenero===k&&<span className="text-[8px] font-black px-1.5 py-0.5 rounded mt-0.5 inline-block" style={{background:`${GENDER_COLORS[k]}20`,color:GENDER_COLORS[k]}}>MEJOR</span>}
+                    <div className="text-xl font-black" style={{color:GENDER_COLORS[k]||'#94a3b8'}}>{porGenero[k]}</div>
+                    <div className="text-[9px] font-bold text-slate-500">{k}</div>
+                    {bestGenero===k&&<span className="text-[7px] font-black px-1 py-0.5 rounded" style={{background:`${GENDER_COLORS[k]}20`,color:GENDER_COLORS[k]}}>MEJOR</span>}
                   </div>
                 ))}
               </div>
-              <Plot data={ch.data} layout={ch.layout} config={{responsive:true,displayModeBar:false}} style={{width:'100%',height:'190px'}} />
+              <Plot data={traces} layout={{
+                autosize:true, paper_bgcolor:'white', plot_bgcolor:'white',
+                barmode:'group' as const,
+                font:{ family:'Inter', size:9 },
+                margin:{ t:10, b:55, l:40, r:10 },
+                xaxis:{ type:'category' as const, tickfont:{ size:9, color:'#1e293b' }, showgrid:false, zeroline:false },
+                yaxis:{ gridcolor:'#f0f4f8', range:[yMin, 105], tickfont:{ size:8, color:'#94a3b8' }, showgrid:true, zeroline:false },
+                legend:{ orientation:'h' as const, y:-0.22, font:{ size:8 } },
+                showlegend:true,
+                shapes:[{ type:'line', x0:0, x1:1, xref:'paper', y0:90, y1:90, line:{ color:'#10b981', width:1, dash:'dot' } }],
+              }} config={{responsive:true,displayModeBar:false}} style={{width:'100%',height:'230px'}} />
             </ChartCard>
           )
         })()}
 
-        {/* Edad */}
-        {eKeys.length > 0 && (() => {
-          const ch = excel3DBar(eKeys, eVals, eKeys.map(k=>k===bestEdad?'#b45309':'#94a3b8'), { marginB:60 })
+        {/* Edad por período */}
+        {edadPorPeriodo.length > 0 && (() => {
+          const periodos = edadPorPeriodo.map((d:any) => d.periodo)
+          const EDAD_COLORS = ['#0f5ca8','#b45309','#047857','#6d28d9']
+          const traces = AGE_BRACKETS.map((b, i) => ({
+            type: 'bar' as const,
+            name: b,
+            x: periodos,
+            y: edadPorPeriodo.map((d:any) => d[b] ?? null),
+            marker: { color: EDAD_COLORS[i], opacity: 0.85 },
+            text: edadPorPeriodo.map((d:any) => d[b] ? (+d[b]).toFixed(1) : ''),
+            textposition: 'outside' as const,
+            textfont: { family:'Inter', size:7 },
+            hovertemplate: `<b>${b}</b><br>%{x}<br>%{y:.1f}/100<extra></extra>`,
+          }))
+          const yVals = edadPorPeriodo.flatMap((d:any) => AGE_BRACKETS.map(b => d[b] ?? 0)).filter(Boolean)
+          const yMin = Math.max(0, Math.floor(Math.min(...yVals)) - 5)
           return (
-            <ChartCard title="Desempeño por Rango de Edad" sub="Grupos etarios">
-              {bestEdad&&<p className="text-[9px] font-black mb-2 px-1" style={{color:'#b45309'}}>Mejor: <span className="text-slate-700">{bestEdad}</span> · {porEdad[bestEdad]}/100</p>}
-              <Plot data={ch.data} layout={ch.layout} config={{responsive:true,displayModeBar:false}} style={{width:'100%',height:'210px'}} />
+            <ChartCard title="Desempeño por Rango de Edad" sub="Por período">
+              {bestEdad&&<p className="text-[8px] font-black mb-1 px-1" style={{color:'#b45309'}}>Mejor: <span className="text-slate-700">{bestEdad}</span> · {porEdad[bestEdad]}/100</p>}
+              <Plot data={traces} layout={{
+                autosize:true, paper_bgcolor:'white', plot_bgcolor:'white',
+                barmode:'group' as const,
+                font:{ family:'Inter', size:9 },
+                margin:{ t:10, b:65, l:40, r:10 },
+                xaxis:{ type:'category' as const, tickfont:{ size:9, color:'#1e293b' }, showgrid:false, zeroline:false },
+                yaxis:{ gridcolor:'#f0f4f8', range:[yMin, 105], tickfont:{ size:8, color:'#94a3b8' }, showgrid:true, zeroline:false },
+                legend:{ orientation:'h' as const, y:-0.28, font:{ size:7 } },
+                showlegend:true,
+                shapes:[{ type:'line', x0:0, x1:1, xref:'paper', y0:90, y1:90, line:{ color:'#10b981', width:1, dash:'dot' } }],
+              }} config={{responsive:true,displayModeBar:false}} style={{width:'100%',height:'250px'}} />
             </ChartCard>
           )
         })()}
 
-        {/* Antigüedad */}
-        {aKeys.length > 0 && (() => {
-          const ch = excel3DBar(aKeys, aVals, aKeys.map(k=>k===bestAnt?'#047857':'#94a3b8'), { marginB:60 })
+        {/* Antigüedad por período */}
+        {antiguedadPorPeriodo.length > 0 && (() => {
+          const periodos = antiguedadPorPeriodo.map((d:any) => d.periodo)
+          const ANT_COLORS = ['#0e7490','#b91c1c','#7c3aed','#047857']
+          const traces = ANTIG_BRACKETS.map((b, i) => ({
+            type: 'bar' as const,
+            name: b,
+            x: periodos,
+            y: antiguedadPorPeriodo.map((d:any) => d[b] ?? null),
+            marker: { color: ANT_COLORS[i], opacity: 0.85 },
+            text: antiguedadPorPeriodo.map((d:any) => d[b] ? (+d[b]).toFixed(1) : ''),
+            textposition: 'outside' as const,
+            textfont: { family:'Inter', size:7 },
+            hovertemplate: `<b>${b}</b><br>%{x}<br>%{y:.1f}/100<extra></extra>`,
+          }))
+          const yVals = antiguedadPorPeriodo.flatMap((d:any) => ANTIG_BRACKETS.map(b => d[b] ?? 0)).filter(Boolean)
+          const yMin = Math.max(0, Math.floor(Math.min(...yVals)) - 5)
           return (
-            <ChartCard title="Desempeño por Antigüedad" sub="Experiencia docente">
-              {bestAnt&&<p className="text-[9px] font-black mb-2 px-1" style={{color:'#047857'}}>Mejor: <span className="text-slate-700">{bestAnt}</span> · {porAnt[bestAnt]}/100</p>}
-              <Plot data={ch.data} layout={ch.layout} config={{responsive:true,displayModeBar:false}} style={{width:'100%',height:'210px'}} />
+            <ChartCard title="Desempeño por Antigüedad" sub="Por período">
+              {bestAnt&&<p className="text-[8px] font-black mb-1 px-1" style={{color:'#047857'}}>Mejor: <span className="text-slate-700">{bestAnt}</span> · {porAnt[bestAnt]}/100</p>}
+              <Plot data={traces} layout={{
+                autosize:true, paper_bgcolor:'white', plot_bgcolor:'white',
+                barmode:'group' as const,
+                font:{ family:'Inter', size:9 },
+                margin:{ t:10, b:65, l:40, r:10 },
+                xaxis:{ type:'category' as const, tickfont:{ size:9, color:'#1e293b' }, showgrid:false, zeroline:false },
+                yaxis:{ gridcolor:'#f0f4f8', range:[yMin, 105], tickfont:{ size:8, color:'#94a3b8' }, showgrid:true, zeroline:false },
+                legend:{ orientation:'h' as const, y:-0.28, font:{ size:7 } },
+                showlegend:true,
+                shapes:[{ type:'line', x0:0, x1:1, xref:'paper', y0:90, y1:90, line:{ color:'#10b981', width:1, dash:'dot' } }],
+              }} config={{responsive:true,displayModeBar:false}} style={{width:'100%',height:'250px'}} />
             </ChartCard>
           )
         })()}
       </div>
 
-      {/* ── Row 5: Género × Edad cross-analysis ───────────────────────────── */}
+      {/* ── Row 5: Género × Edad/Antigüedad cross-analysis ────────────────── */}
       {(Object.keys(generoEdad).length > 0 || Object.keys(generoAnt).length > 0) && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-
-          {/* Género × Edad */}
           {Object.keys(generoEdad).length > 0 && (() => {
             const sE = Object.entries(generoEdad).map(([gen,br])=>({name:gen,color:GENDER_COLORS[gen]||'#64748b',values:AGE_BRACKETS.map(b=>br[b]??null)}))
             const ch = excel3DGrouped(AGE_BRACKETS, sE)
@@ -864,8 +937,6 @@ function ComparativoPanel({ comparativo }: { comparativo: any }) {
               </ChartCard>
             )
           })()}
-
-          {/* Género × Antigüedad */}
           {Object.keys(generoAnt).length > 0 && (() => {
             const sA = Object.entries(generoAnt).map(([gen,br])=>({name:gen,color:GENDER_COLORS[gen]||'#64748b',values:ANTIG_BRACKETS.map(b=>br[b]??null)}))
             const ch = excel3DGrouped(ANTIG_BRACKETS, sA)

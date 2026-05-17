@@ -388,6 +388,68 @@ class KPIService:
             for g, brackets in _crossa.items()
         }
 
+        # ── Demografía por período ────────────────────────────────────────────
+        # Género × período
+        gp_rows = (
+            q_all.with_entities(Evaluacion.periodo, Evaluacion.anio, Evaluacion.sexo, func.avg(Evaluacion.puntaje_100))
+            .filter(Evaluacion.periodo != None, Evaluacion.sexo != None, Evaluacion.sexo != '')
+            .group_by(Evaluacion.periodo, Evaluacion.anio, Evaluacion.sexo)
+            .order_by(Evaluacion.anio, Evaluacion.periodo).all()
+        )
+        _gp: dict = {}
+        for periodo, anio_val, sexo, avg_v in gp_rows:
+            gkey = _GENERO_NORM.get(str(sexo).lower().strip(), str(sexo).strip())
+            if periodo not in _gp:
+                _gp[periodo] = {'periodo': periodo, 'anio': anio_val}
+            _gp[periodo][gkey] = round(float(avg_v), 2) if avg_v else None
+        genero_por_periodo = sorted(_gp.values(), key=lambda x: (x.get('anio', 0), x.get('periodo', '')))
+
+        # Edad × período
+        ep_raw = (
+            q_all.with_entities(Evaluacion.periodo, Evaluacion.anio, Evaluacion.edad, Evaluacion.puntaje_100)
+            .filter(Evaluacion.periodo != None, Evaluacion.edad != None, Evaluacion.puntaje_100 != None).all()
+        )
+        _ep: dict = {}
+        for periodo, anio_val, edad, pun in ep_raw:
+            if not periodo or edad is None: continue
+            if edad < 30:    bracket = '< 30 años'
+            elif edad <= 45: bracket = '31-45 años'
+            elif edad <= 60: bracket = '46-60 años'
+            else:            bracket = '61+ años'
+            if periodo not in _ep:
+                _ep[periodo] = {'periodo': periodo, 'anio': anio_val, '_b': {b: [] for b in AGE_BRACKETS}}
+            _ep[periodo]['_b'][bracket].append(float(pun))
+        edad_por_periodo = []
+        for p, d in sorted(_ep.items(), key=lambda x: (x[1].get('anio', 0), x[0])):
+            entry: dict = {'periodo': d['periodo'], 'anio': d['anio']}
+            for b in AGE_BRACKETS:
+                v = d['_b'][b]
+                entry[b] = round(sum(v)/len(v), 2) if v else None
+            edad_por_periodo.append(entry)
+
+        # Antigüedad × período
+        ap_raw = (
+            q_all.with_entities(Evaluacion.periodo, Evaluacion.anio, Evaluacion.antiguedad_anos, Evaluacion.puntaje_100)
+            .filter(Evaluacion.periodo != None, Evaluacion.antiguedad_anos != None, Evaluacion.puntaje_100 != None).all()
+        )
+        _ant: dict = {}
+        for periodo, anio_val, ant, pun in ap_raw:
+            if not periodo or ant is None: continue
+            if ant <= 3:    bracket = '0-3 años'
+            elif ant <= 10: bracket = '4-10 años'
+            elif ant <= 20: bracket = '11-20 años'
+            else:           bracket = '20+ años'
+            if periodo not in _ant:
+                _ant[periodo] = {'periodo': periodo, 'anio': anio_val, '_b': {b: [] for b in ANTIG_BRACKETS}}
+            _ant[periodo]['_b'][bracket].append(float(pun))
+        antiguedad_por_periodo = []
+        for p, d in sorted(_ant.items(), key=lambda x: (x[1].get('anio', 0), x[0])):
+            entry2: dict = {'periodo': d['periodo'], 'anio': d['anio']}
+            for b in ANTIG_BRACKETS:
+                v = d['_b'][b]
+                entry2[b] = round(sum(v)/len(v), 2) if v else None
+            antiguedad_por_periodo.append(entry2)
+
         # ── Mejores y Peores por modelo 360 ──────────────────────────────────
         RANKING_MODELS = {
             'Pregrado':      'docencia',
@@ -572,6 +634,9 @@ class KPIService:
             'tendencia_periodos_meipa': trend_periodos('meipa'),
             'tendencia_periodos_360':  trend_periodos('360'),
             'por_modelo_por_periodo':  por_modelo_por_periodo_360(),
+            'genero_por_periodo':      genero_por_periodo,
+            'edad_por_periodo':        edad_por_periodo,
+            'antiguedad_por_periodo':  antiguedad_por_periodo,
             'por_facultad':       por_facultad,
             'por_genero':         por_genero,
             'por_edad':           por_edad,

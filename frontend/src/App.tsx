@@ -521,6 +521,7 @@ function AIConsultaPanel({ anio }: { anio?: number }) {
 
 // ── Comparativo panel ─────────────────────────────────────────────────────────
 function ComparativoPanel({ comparativo }: { comparativo: any }) {
+  const [crossPeriodo, setCrossPeriodo] = useState<string>('__todos__')
   if (!comparativo) return null
 
   const meipa      = comparativo.meipa || { promedio: null, n: 0 }
@@ -964,106 +965,103 @@ function ComparativoPanel({ comparativo }: { comparativo: any }) {
         })()}
       </div>
 
-      {/* ── Row 5: Género × Edad/Antigüedad cross-analysis por período ──── */}
-      {(generoEdadPorPeriodo.length > 0 || generoAntiguedadPorPeriodo.length > 0) && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      {/* ── Row 5: Género × Edad/Antigüedad — selector de período ─────────── */}
+      {(generoEdadPorPeriodo.length > 0 || generoAntiguedadPorPeriodo.length > 0) && (() => {
+        // períodos únicos ordenados
+        const periodosUnicos: string[] = []
+        for (const row of [...generoEdadPorPeriodo, ...generoAntiguedadPorPeriodo]) {
+          if (!periodosUnicos.includes(row.periodo)) periodosUnicos.push(row.periodo)
+        }
 
-          {/* Mujer vs Hombre × Rango de Edad × Período */}
-          {generoEdadPorPeriodo.length > 0 && (() => {
-            // pivot flat rows → { "Mujer_< 30 años": { periodo: val } }
-            const periodoSet: string[] = []
-            const seriesMap: Record<string, Record<string, number|null>> = {}
-            for (const row of generoEdadPorPeriodo) {
-              if (!periodoSet.includes(row.periodo)) periodoSet.push(row.periodo)
-              const key = `${row.genero}_${row.bracket}`
-              if (!seriesMap[key]) seriesMap[key] = {}
-              seriesMap[key][row.periodo] = row.promedio
+        // helper: pivot rows filtrados → { Mujer: { bracket: val }, Hombre: { bracket: val } }
+        function pivotCross(rows: any[], brackets: string[], periodo: string) {
+          const acc: Record<string, Record<string, number[]>> = { Mujer: {}, Hombre: {} }
+          for (const r of rows) {
+            if (periodo !== '__todos__' && r.periodo !== periodo) continue
+            if (!acc[r.genero]) acc[r.genero] = {}
+            if (!acc[r.genero][r.bracket]) acc[r.genero][r.bracket] = []
+            if (r.promedio != null) acc[r.genero][r.bracket].push(r.promedio)
+          }
+          const out: Record<string, Record<string, number|null>> = {}
+          for (const g of ['Mujer','Hombre']) {
+            out[g] = {}
+            for (const b of brackets) {
+              const vs = acc[g]?.[b] || []
+              out[g][b] = vs.length ? Math.round((vs.reduce((a,v)=>a+v,0)/vs.length)*10)/10 : null
             }
-            // colors: pink shades for Mujer, blue shades for Hombre
-            const MUJER_SHADES = ['#f43f5e','#fb7185','#fda4af','#fecdd3']
-            const HOMBRE_SHADES = ['#1d4ed8','#3b82f6','#60a5fa','#93c5fd']
-            const traces = AGE_BRACKETS.flatMap((b, i) => {
-              return ['Mujer','Hombre'].map(g => {
-                const key = `${g}_${b}`
-                const color = g === 'Mujer' ? MUJER_SHADES[i] : HOMBRE_SHADES[i]
-                return {
-                  type: 'scatter' as const, mode: 'lines+markers' as const,
-                  name: `${g} ${b}`,
-                  x: periodoSet,
-                  y: periodoSet.map(p => seriesMap[key]?.[p] ?? null),
-                  line: { color, width: 2, dash: g === 'Hombre' ? 'dash' as const : 'solid' as const },
-                  marker: { color, size: 6, symbol: g === 'Hombre' ? 'square' as const : 'circle' as const },
-                  connectgaps: false,
-                  hovertemplate: `<b>${g} ${b}</b><br>%{x}<br>%{y:.1f}/100<extra></extra>`,
-                }
-              })
-            })
-            const allV = generoEdadPorPeriodo.map((r:any)=>r.promedio).filter(Boolean)
-            const yMin = allV.length ? Math.max(0, Math.floor(Math.min(...allV)) - 5) : 60
-            return (
-              <ChartCard title="Mujer vs Hombre — Por Rango de Edad" sub="Análisis cruzado · Por período">
-                <Plot data={traces} layout={{
+          }
+          return out
+        }
+
+        function crossTraces(pivot: Record<string, Record<string, number|null>>, brackets: string[]) {
+          return ['Mujer','Hombre'].map(g => ({
+            type: 'bar' as const,
+            name: g,
+            x: brackets,
+            y: brackets.map(b => pivot[g]?.[b] ?? null),
+            marker: { color: GENDER_COLORS[g] || '#94a3b8', opacity: 0.88 },
+            text: brackets.map(b => pivot[g]?.[b] != null ? (+pivot[g][b]!).toFixed(1) : ''),
+            textposition: 'outside' as const,
+            textfont: { family:'Inter', size:8 },
+            hovertemplate: `<b>${g}</b><br>%{x}<br>%{y:.1f}/100<extra></extra>`,
+          }))
+        }
+
+        const pivotEdad  = pivotCross(generoEdadPorPeriodo,       AGE_BRACKETS,   crossPeriodo)
+        const pivotAntig = pivotCross(generoAntiguedadPorPeriodo, ANTIG_BRACKETS, crossPeriodo)
+        const allVE = Object.values(pivotEdad).flatMap(g=>Object.values(g)).filter((v):v is number=>v!=null)
+        const allVA = Object.values(pivotAntig).flatMap(g=>Object.values(g)).filter((v):v is number=>v!=null)
+        const yMinE = allVE.length ? Math.max(0, Math.floor(Math.min(...allVE))-5) : 60
+        const yMinA = allVA.length ? Math.max(0, Math.floor(Math.min(...allVA))-5) : 60
+
+        const tabStyle = (p: string) =>
+          `px-3 py-1 rounded-full text-[8px] font-bold border transition-all cursor-pointer ${
+            crossPeriodo === p
+              ? 'bg-slate-700 text-white border-slate-700'
+              : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400'
+          }`
+
+        return (
+          <div>
+            {/* Selector de período compartido */}
+            <div className="flex flex-wrap items-center gap-2 mb-3 px-1">
+              <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mr-1">Período</span>
+              <button className={tabStyle('__todos__')} onClick={()=>setCrossPeriodo('__todos__')}>Todos</button>
+              {periodosUnicos.map(p=>(
+                <button key={p} className={tabStyle(p)} onClick={()=>setCrossPeriodo(p)}>{p}</button>
+              ))}
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+              <ChartCard title="Mujer vs Hombre — Por Rango de Edad" sub={`Análisis cruzado · ${crossPeriodo==='__todos__'?'Todos los períodos':crossPeriodo}`}>
+                <Plot data={crossTraces(pivotEdad, AGE_BRACKETS)} layout={{
                   autosize:true, paper_bgcolor:'white', plot_bgcolor:'white',
+                  barmode:'group' as const,
                   font:{ family:'Inter', size:9 },
-                  margin:{ t:10, b:90, l:42, r:10 },
+                  margin:{ t:10, b:55, l:42, r:10 },
                   xaxis:{ type:'category' as const, tickfont:{ size:9, color:'#1e293b' }, showgrid:false, zeroline:false },
-                  yaxis:{ gridcolor:'#f0f4f8', range:[yMin, 102], tickfont:{ size:8, color:'#94a3b8' }, showgrid:true, zeroline:false },
-                  legend:{ orientation:'h' as const, y:-0.38, font:{ size:7.5 }, traceorder:'normal' },
+                  yaxis:{ gridcolor:'#f0f4f8', range:[yMinE, 104], tickfont:{ size:8, color:'#94a3b8' }, showgrid:true, zeroline:false },
+                  legend:{ orientation:'h' as const, y:-0.22, font:{ size:9 } },
                   showlegend:true,
                   shapes:[{ type:'line', x0:0, x1:1, xref:'paper', y0:90, y1:90, line:{ color:'#10b981', width:1, dash:'dot' } }],
-                }} config={{responsive:true,displayModeBar:false}} style={{width:'100%',height:'310px'}} />
+                }} config={{responsive:true,displayModeBar:false}} style={{width:'100%',height:'270px'}} />
               </ChartCard>
-            )
-          })()}
-
-          {/* Mujer vs Hombre × Antigüedad × Período */}
-          {generoAntiguedadPorPeriodo.length > 0 && (() => {
-            const periodoSet: string[] = []
-            const seriesMap: Record<string, Record<string, number|null>> = {}
-            for (const row of generoAntiguedadPorPeriodo) {
-              if (!periodoSet.includes(row.periodo)) periodoSet.push(row.periodo)
-              const key = `${row.genero}_${row.bracket}`
-              if (!seriesMap[key]) seriesMap[key] = {}
-              seriesMap[key][row.periodo] = row.promedio
-            }
-            const MUJER_SHADES = ['#f43f5e','#fb7185','#fda4af','#fecdd3']
-            const HOMBRE_SHADES = ['#1d4ed8','#3b82f6','#60a5fa','#93c5fd']
-            const traces = ANTIG_BRACKETS.flatMap((b, i) => {
-              return ['Mujer','Hombre'].map(g => {
-                const key = `${g}_${b}`
-                const color = g === 'Mujer' ? MUJER_SHADES[i] : HOMBRE_SHADES[i]
-                return {
-                  type: 'scatter' as const, mode: 'lines+markers' as const,
-                  name: `${g} ${b}`,
-                  x: periodoSet,
-                  y: periodoSet.map(p => seriesMap[key]?.[p] ?? null),
-                  line: { color, width: 2, dash: g === 'Hombre' ? 'dash' as const : 'solid' as const },
-                  marker: { color, size: 6, symbol: g === 'Hombre' ? 'square' as const : 'circle' as const },
-                  connectgaps: false,
-                  hovertemplate: `<b>${g} ${b}</b><br>%{x}<br>%{y:.1f}/100<extra></extra>`,
-                }
-              })
-            })
-            const allV = generoAntiguedadPorPeriodo.map((r:any)=>r.promedio).filter(Boolean)
-            const yMin = allV.length ? Math.max(0, Math.floor(Math.min(...allV)) - 5) : 60
-            return (
-              <ChartCard title="Mujer vs Hombre — Por Antigüedad" sub="Análisis cruzado · Por período">
-                <Plot data={traces} layout={{
+              <ChartCard title="Mujer vs Hombre — Por Antigüedad" sub={`Análisis cruzado · ${crossPeriodo==='__todos__'?'Todos los períodos':crossPeriodo}`}>
+                <Plot data={crossTraces(pivotAntig, ANTIG_BRACKETS)} layout={{
                   autosize:true, paper_bgcolor:'white', plot_bgcolor:'white',
+                  barmode:'group' as const,
                   font:{ family:'Inter', size:9 },
-                  margin:{ t:10, b:90, l:42, r:10 },
+                  margin:{ t:10, b:55, l:42, r:10 },
                   xaxis:{ type:'category' as const, tickfont:{ size:9, color:'#1e293b' }, showgrid:false, zeroline:false },
-                  yaxis:{ gridcolor:'#f0f4f8', range:[yMin, 102], tickfont:{ size:8, color:'#94a3b8' }, showgrid:true, zeroline:false },
-                  legend:{ orientation:'h' as const, y:-0.38, font:{ size:7.5 }, traceorder:'normal' },
+                  yaxis:{ gridcolor:'#f0f4f8', range:[yMinA, 104], tickfont:{ size:8, color:'#94a3b8' }, showgrid:true, zeroline:false },
+                  legend:{ orientation:'h' as const, y:-0.22, font:{ size:9 } },
                   showlegend:true,
                   shapes:[{ type:'line', x0:0, x1:1, xref:'paper', y0:90, y1:90, line:{ color:'#10b981', width:1, dash:'dot' } }],
-                }} config={{responsive:true,displayModeBar:false}} style={{width:'100%',height:'310px'}} />
+                }} config={{responsive:true,displayModeBar:false}} style={{width:'100%',height:'270px'}} />
               </ChartCard>
-            )
-          })()}
-
-        </div>
-      )}
+            </div>
+          </div>
+        )
+      })()}
 
     </div>
   )

@@ -978,6 +978,40 @@ class ETLService:
             model_scores.pop(k, None)
         model_scores.update(to_add)
 
+        # ── Reverse cleanup: ABP records with non-medical programs → docencia ──
+        # If an ABP record has a program that isn't medical (Medicina/Internado),
+        # it was misclassified because students used ABP instrument forms in error.
+        # Move it back to docencia (or merge with existing docencia entry).
+        abp_to_remove = []
+        abp_to_docencia: dict = {}
+        for (ced, modelo), info in model_scores.items():
+            if modelo != 'abp':
+                continue
+            prog = str(info.get('programa', '')).upper().strip()
+            if any(k in prog for k in ('MEDICINA', 'INTERNADO', 'MÉDIC', 'MEDIC', 'ABP')):
+                continue  # legitimate ABP
+            # Non-medical program in ABP bucket → reclassify to docencia
+            abp_to_remove.append((ced, modelo))
+            doc_key = (ced, 'docencia')
+            if doc_key in model_scores:
+                # Merge non-overlapping scores into existing docencia entry
+                for comp, val in info['scores'].items():
+                    if comp not in model_scores[doc_key]['scores']:
+                        model_scores[doc_key]['scores'][comp] = val
+            elif doc_key in abp_to_docencia:
+                for comp, val in info['scores'].items():
+                    if comp not in abp_to_docencia[doc_key]['scores']:
+                        abp_to_docencia[doc_key]['scores'][comp] = val
+            else:
+                abp_to_docencia[doc_key] = {
+                    'nombre':   info['nombre'],
+                    'programa': info['programa'],
+                    'scores':   dict(info['scores']),
+                }
+        for k in abp_to_remove:
+            model_scores.pop(k, None)
+        model_scores.update(abp_to_docencia)
+
     # ── CSV hetero 2025 ───────────────────────────────────────────────────────
 
     def _merge_csv_hetero_2025(self, model_scores: dict, staff: dict, csv_code: str = None):

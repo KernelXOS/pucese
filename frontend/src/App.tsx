@@ -1209,11 +1209,13 @@ function MejoresPeoresPanel({ mejoresPeores }: { mejoresPeores: Record<string, a
 
 // ── Variables Detalle Panel ───────────────────────────────────────────────────
 const VD_360_TABS = [
-  { key: '360_docencia',    label: 'Docencia',       icon: GraduationCap, color: '#0056b3' },
-  { key: '360_abp',         label: 'Salud / ABP',    icon: Heart,         color: '#dc2626' },
-  { key: '360_vinculacion', label: 'Vinculación',    icon: Link2,         color: '#059669' },
-  { key: '360_investigacion',label:'Investigación',  icon: Microscope,    color: '#7c3aed' },
-  { key: '360_gestion',     label: 'Gestión',        icon: Briefcase,     color: '#d97706' },
+  { key: '360_docencia',     label: 'Docencia',       icon: GraduationCap, color: '#0056b3' },
+  { key: '360_abp',          label: 'Salud / ABP',    icon: Heart,         color: '#dc2626' },
+  { key: '360_tecnologado',  label: 'Tecnologado',    icon: Cpu,           color: '#0891b2' },
+  { key: '360_posgrado',     label: 'Posgrado',       icon: BookOpen,      color: '#8b5cf6' },
+  { key: '360_vinculacion',  label: 'Vinculación',    icon: Link2,         color: '#059669' },
+  { key: '360_investigacion',label: 'Investigación',  icon: Microscope,    color: '#7c3aed' },
+  { key: '360_gestion',      label: 'Gestión',        icon: Briefcase,     color: '#d97706' },
 ]
 
 function VariablesDetallePanel({
@@ -2128,7 +2130,7 @@ export default function App() {
                 })}
                 {/* Model tabs (no ABP) */}
                 <div style={{ marginTop:4, paddingTop:4, borderTop:'1px solid rgba(255,255,255,0.06)' }}>
-                  {TABS_360.filter(t => t.id !== 'abp' && t.id !== 'tecnologado').map(tab => {
+                  {TABS_360.filter(t => t.id !== 'abp').map(tab => {
                     const Icon = tab.icon
                     const active = sistema === '360' && activeTab === tab.id
                     return (

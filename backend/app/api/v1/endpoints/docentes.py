@@ -1,9 +1,10 @@
 """
 Endpoints de docentes: listado, perfil completo histórico, descarga de PDF.
 """
-from typing import Optional
+from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 import io
 
 from sqlalchemy.orm import Session
@@ -11,7 +12,7 @@ from app.db.session import get_db
 from app.models.docente import Docente, PersonalPeriodo
 from app.models.puntaje import PuntajeFinal
 from app.etl.registry import PERIODOS
-from app.services.pdf_service import generar_pdf_docente
+from app.services.pdf_service import generar_pdf_docente, generar_pdf_directorio
 
 router = APIRouter()
 
@@ -173,6 +174,49 @@ def descargar_reporte_pdf(
     nombre_safe = (docente.apellidos or cedula).replace(" ", "_").upper()[:30] if docente else cedula
     periodo_safe = periodo or "ultimo"
     filename = f"Reporte_{nombre_safe}_{periodo_safe}.pdf"
+
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+class DocenteItem(BaseModel):
+    nombre:   str = ""
+    cedula:   str = ""
+    facultad: str = ""
+    sistema:  str = ""
+    modelo:   str = ""
+    puntaje:  float = 0.0
+    nivel:    str = ""
+
+class DirectorioReportePayload(BaseModel):
+    titulo:   str = "Todos los Docentes"
+    docentes: List[DocenteItem] = []
+
+
+@router.post("/reporte-directorio.pdf")
+def descargar_reporte_directorio(
+    payload: DirectorioReportePayload,
+):
+    """
+    Genera un PDF de reporte del directorio de docentes con el mismo diseño
+    profesional que el reporte individual (WeasyPrint/HTML).
+    El frontend envía la lista de docentes ya filtrada.
+    """
+    try:
+        docentes_raw = [d.dict() for d in payload.docentes]
+        pdf_bytes = generar_pdf_directorio(
+            titulo=payload.titulo,
+            docentes_data=docentes_raw,
+        )
+    except RuntimeError as e:
+        raise HTTPException(500, str(e))
+
+    from datetime import datetime as _dt
+    fecha_safe = _dt.now().strftime("%Y-%m-%d")
+    filename = f"Reporte_Directorio_{fecha_safe}.pdf"
 
     return StreamingResponse(
         io.BytesIO(pdf_bytes),

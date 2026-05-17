@@ -312,6 +312,146 @@ def _build_ranking(cedula: str, periodo_codigo: str, modelo: str, puntaje_100: f
     }
 
 
+def generar_pdf_directorio(
+    titulo: str,
+    docentes_data: list,
+) -> bytes:
+    """
+    Genera el PDF de directorio (ranking completo) con diseño profesional.
+    docentes_data: lista de dicts con keys nombre, cedula, facultad, sistema, modelo, puntaje, nivel
+    """
+    from datetime import datetime as _dt
+
+    MODELO_LABELS_DIR = {
+        "docencia":      "Docencia",
+        "abp":           "Salud/ABP",
+        "posgrado":      "Posgrado",
+        "tecnologado":   "Tecnologado",
+        "investigacion": "Investigación",
+        "vinculacion":   "Vinculación",
+        "gestion":       "Gestión",
+    }
+
+    NIVEL_COLOR = {
+        "Excelente":  "#059669",
+        "Bueno":      "#0056b3",
+        "Regular":    "#d97706",
+        "Deficiente": "#dc2626",
+    }
+
+    def _score_color(p):
+        if p is None:
+            return "#94a3b8"
+        if p >= 90: return "#059669"
+        if p >= 75: return "#0056b3"
+        if p >= 60: return "#d97706"
+        return "#dc2626"
+
+    # KPI summary
+    total = len(docentes_data)
+    puntajes = [float(d.get("puntaje") or 0) for d in docentes_data]
+    promedio = f"{sum(puntajes)/total:.1f}" if total else "0.0"
+    nivel_count = {}
+    for d in docentes_data:
+        n = d.get("nivel") or "Sin datos"
+        nivel_count[n] = nivel_count.get(n, 0) + 1
+
+    n_excelente  = nivel_count.get("Excelente", 0)
+    n_bueno      = nivel_count.get("Bueno", 0)
+    n_regular    = nivel_count.get("Regular", 0)
+    n_deficiente = nivel_count.get("Deficiente", 0)
+
+    # Distribución bars
+    distribucion = []
+    for label, color, key in [
+        ("Excelente",  "#059669", "Excelente"),
+        ("Bueno",      "#0056b3", "Bueno"),
+        ("Regular",    "#d97706", "Regular"),
+        ("Deficiente", "#dc2626", "Deficiente"),
+    ]:
+        n = nivel_count.get(key, 0)
+        pct = round(n / total * 100, 1) if total else 0
+        distribucion.append({"label": label, "n": n, "pct": pct, "color": color})
+
+    # Top 10
+    sorted_docs = sorted(docentes_data, key=lambda d: float(d.get("puntaje") or 0), reverse=True)
+    top10 = []
+    for d in sorted_docs[:10]:
+        p = float(d.get("puntaje") or 0)
+        nombre = d.get("nombre") or ""
+        partes = nombre.split()
+        nombre_corto = " ".join(partes[:3]) if len(partes) >= 3 else nombre
+        color = _score_color(p)
+        top10.append({
+            "nombre_corto": nombre_corto,
+            "puntaje_fmt": f"{p:.1f}",
+            "pct": round(p, 1),
+            "color": color,
+        })
+
+    # Full table rows
+    docentes_ctx = []
+    for d in sorted_docs:
+        p = float(d.get("puntaje") or 0)
+        nivel = d.get("nivel") or "Sin datos"
+        nivel_css = nivel.replace(" ", "-")
+        docentes_ctx.append({
+            "nombre":      d.get("nombre") or "—",
+            "cedula":      d.get("cedula") or "",
+            "facultad":    d.get("facultad") or "—",
+            "sistema":     d.get("sistema") or "",
+            "modelo_label": MODELO_LABELS_DIR.get(d.get("modelo") or "", (d.get("modelo") or "").capitalize()),
+            "puntaje_fmt": f"{p:.1f}",
+            "score_color": _score_color(p),
+            "nivel":       nivel,
+            "nivel_css":   nivel_css,
+        })
+
+    # Título corto para badge
+    titulo_corto = titulo[:20] if len(titulo) > 20 else titulo
+
+    ctx = {
+        "logo_url":        LOGO_URL,
+        "titulo":          titulo,
+        "titulo_corto":    titulo_corto,
+        "fecha_generacion": _dt.now().strftime("%d/%m/%Y %H:%M"),
+        "total":           total,
+        "promedio":        promedio,
+        "n_excelente":     n_excelente,
+        "n_bueno":         n_bueno,
+        "n_regular":       n_regular,
+        "n_deficiente":    n_deficiente,
+        "distribucion":    distribucion,
+        "top10":           top10,
+        "docentes":        docentes_ctx,
+    }
+
+    env = Environment(loader=FileSystemLoader(TEMPLATE_DIR))
+    template = env.get_template("reporte_directorio.html")
+    html_str = template.render(**ctx)
+
+    # Convertir a PDF
+    try:
+        from weasyprint import HTML as WP_HTML
+        pdf_bytes = WP_HTML(string=html_str, base_url=TEMPLATE_DIR).write_pdf()
+        return pdf_bytes
+    except Exception:
+        pass
+
+    try:
+        import io as _io
+        from xhtml2pdf import pisa
+        buf = _io.BytesIO()
+        status = pisa.CreatePDF(html_str, dest=buf)
+        if status.err:
+            raise RuntimeError("xhtml2pdf falló al generar el PDF de directorio")
+        return buf.getvalue()
+    except ImportError:
+        raise RuntimeError(
+            "No se pudo generar el PDF. Instala xhtml2pdf: pip install xhtml2pdf"
+        )
+
+
 def generar_pdf_docente(
     cedula: str,
     db: Session,

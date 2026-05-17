@@ -26,7 +26,7 @@ frontend/.env.production
 node_modules/
 
 # ── Base de datos local ─────────────────────────────────────────────────────
-*.db
+# evaluacion.db se incluye para que Railway tenga datos
 *.sqlite
 *.sqlite3
 

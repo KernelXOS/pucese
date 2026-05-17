@@ -1,16 +1,12 @@
-FROM python:3.11-slim
+FROM python:3.11-slim-bullseye
 
 WORKDIR /app
 
-# Todas las dependencias del sistema necesarias
 RUN apt-get update && apt-get install -y \
-    # PostgreSQL
     libpq-dev \
     gcc \
     g++ \
-    # WeasyPrint (PDF)
     libcairo2 \
-    libcairo-gobject2 \
     libpango-1.0-0 \
     libpangocairo-1.0-0 \
     libpangoft2-1.0-0 \
@@ -21,8 +17,6 @@ RUN apt-get update && apt-get install -y \
     libfontconfig1 \
     shared-mime-info \
     fonts-liberation \
-    # Utilidades
-    curl \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
@@ -31,7 +25,6 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 COPY . .
 
-# Puerto dinámico para Railway
 ENV PORT=8000
 EXPOSE 8000
 
